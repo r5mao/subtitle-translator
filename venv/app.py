@@ -17,7 +17,8 @@ Key Features:
 
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-from googletrans import Translator
+import asyncio
+from googletrans import AsyncTranslator
 import re
 import os
 import tempfile
@@ -37,8 +38,6 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)  # Enable Cross-Origin Resource Sharing for web frontend
 
-# Initialize Google Translator
-translator = Translator()
 
 class SRTEntry:
     """
@@ -175,21 +174,12 @@ class SRTParser:
         
         return '\n'.join(srt_content)
 
+
 class TranslationService:
     """
-    Handles text translation using Google Translate API.
-    
-    This service provides robust translation capabilities with:
-    - Batch translation for efficiency
-    - Error handling and retry logic
-    - Text preprocessing and cleanup
-    - Language detection and validation
+    Handles text translation using Google Translate API (async version).
     """
-    
     def __init__(self):
-        self.translator = Translator()
-        
-        # Language code mapping for better user experience
         self.language_names = {
             'en': 'English', 'es': 'Spanish', 'fr': 'French', 'de': 'German',
             'it': 'Italian', 'pt': 'Portuguese', 'ru': 'Russian', 'zh': 'Chinese',
@@ -197,133 +187,63 @@ class TranslationService:
             'nl': 'Dutch', 'sv': 'Swedish', 'da': 'Danish', 'no': 'Norwegian',
             'fi': 'Finnish', 'pl': 'Polish', 'tr': 'Turkish', 'he': 'Hebrew'
         }
-    
-    def translate_text(self, text: str, source_lang: str, target_lang: str) -> str:
-        """
-        Translates a single text string from source to target language.
-        
-        The translation process includes:
-        1. Text preprocessing to handle special characters
-        2. Translation using Google Translate API
-        3. Post-processing to clean up formatting
-        4. Error handling with fallback strategies
-        
-        Args:
-            text: Text to translate
-            source_lang: Source language code (e.g., 'en')
-            target_lang: Target language code (e.g., 'es')
-            
-        Returns:
-            Translated text string
-            
-        Raises:
-            Exception: If translation fails after retry attempts
-        """
+
+    async def translate_text(self, text: str, source_lang: str, target_lang: str, translator: AsyncTranslator) -> str:
         try:
-            # Preprocess text to handle subtitle formatting
             cleaned_text = self._preprocess_subtitle_text(text)
-            
             if not cleaned_text.strip():
                 return text
-            
-            # Perform translation
-            result = self.translator.translate(
-                cleaned_text, 
-                src=source_lang, 
+            result = await translator.translate(
+                cleaned_text,
+                src=source_lang,
                 dest=target_lang
             )
-            
             if result and result.text:
                 return self._postprocess_subtitle_text(result.text)
             else:
                 logger.warning(f"Empty translation result for: {text[:50]}...")
                 return text
-                
         except Exception as e:
             logger.error(f"Translation error for text '{text[:50]}...': {str(e)}")
             raise Exception(f"Translation failed: {str(e)}")
-    
-    def translate_subtitle_entries(self, entries: List[SRTEntry], source_lang: str, target_lang: str) -> List[SRTEntry]:
-        """
-        Translates all text content in a list of SRT entries while preserving timing.
-        
-        This method processes each subtitle entry individually to maintain
-        the integrity of timing information and sequence numbers.
-        
-        Args:
-            entries: List of SRTEntry objects to translate
-            source_lang: Source language code
-            target_lang: Target language code
-            
-        Returns:
-            List of translated SRTEntry objects with original timing preserved
-        """
+
+    async def translate_subtitle_entries(self, entries: List[SRTEntry], source_lang: str, target_lang: str) -> List[SRTEntry]:
         translated_entries = []
         total_entries = len(entries)
-        
         logger.info(f"Starting translation of {total_entries} entries from {source_lang} to {target_lang}")
-        
-        for index, entry in enumerate(entries):
-            try:
-                # Translate each text line in the entry
-                translated_lines = []
-                
-                for line in entry.text_lines:
-                    if line.strip():
-                        translated_line = self.translate_text(line, source_lang, target_lang)
-                        translated_lines.append(translated_line)
-                    else:
-                        translated_lines.append(line)
-                
-                # Create new entry with translated text but original timing
-                translated_entry = SRTEntry(
-                    entry.sequence_number,
-                    entry.start_time,
-                    entry.end_time,
-                    translated_lines
-                )
-                
-                translated_entries.append(translated_entry)
-                
-                # Log progress for monitoring
-                if (index + 1) % 10 == 0 or (index + 1) == total_entries:
-                    logger.info(f"Translated {index + 1}/{total_entries} entries")
-                    
-            except Exception as e:
-                logger.error(f"Error translating entry {entry.sequence_number}: {str(e)}")
-                # Keep original entry if translation fails
-                translated_entries.append(entry)
-        
+        async with AsyncTranslator() as translator:
+            for index, entry in enumerate(entries):
+                try:
+                    translated_lines = []
+                    for line in entry.text_lines:
+                        if line.strip():
+                            translated_line = await self.translate_text(line, source_lang, target_lang, translator)
+                            translated_lines.append(translated_line)
+                        else:
+                            translated_lines.append(line)
+                    translated_entry = SRTEntry(
+                        entry.sequence_number,
+                        entry.start_time,
+                        entry.end_time,
+                        translated_lines
+                    )
+                    translated_entries.append(translated_entry)
+                    if (index + 1) % 10 == 0 or (index + 1) == total_entries:
+                        logger.info(f"Translated {index + 1}/{total_entries} entries")
+                except Exception as e:
+                    logger.error(f"Error translating entry {entry.sequence_number}: {str(e)}")
+                    translated_entries.append(entry)
         logger.info(f"Translation completed successfully")
         return translated_entries
-    
+
     def _preprocess_subtitle_text(self, text: str) -> str:
-        """
-        Preprocesses subtitle text before translation.
-        
-        This handles common subtitle formatting issues like:
-        - HTML tags in subtitles
-        - Extra whitespace
-        - Special formatting characters
-        """
-        # Remove HTML tags if present
         text = re.sub(r'<[^>]+>', '', text)
-        
-        # Clean up excessive whitespace
         text = re.sub(r'\s+', ' ', text)
-        
         return text.strip()
-    
+
     def _postprocess_subtitle_text(self, text: str) -> str:
-        """
-        Postprocesses translated text to ensure proper subtitle formatting.
-        """
-        # Ensure proper capitalization and punctuation
         text = text.strip()
-        
-        # Fix common translation formatting issues
         text = re.sub(r'\s+', ' ', text)
-        
         return text
 
 # Initialize translation service
@@ -430,13 +350,12 @@ def translate_srt():
             logger.error(f"SRT parsing error: {str(e)}")
             return jsonify({'error': f'Invalid SRT format: {str(e)}'}), 400
         
-        # Translate entries
+        # Translate entries (async)
         try:
-            translated_entries = translation_service.translate_subtitle_entries(
-                entries, source_lang, target_lang
+            translated_entries = asyncio.run(
+                translation_service.translate_subtitle_entries(entries, source_lang, target_lang)
             )
             logger.info(f"Translation completed for {len(translated_entries)} entries")
-            
         except Exception as e:
             logger.error(f"Translation error: {str(e)}")
             return jsonify({'error': f'Translation failed: {str(e)}'}), 500
