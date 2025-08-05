@@ -489,23 +489,34 @@
         // Actual translation function: sends formData to Python backend API
         async function simulateTranslation(formData) {
             try {
-            const response = await fetch('/api/translate', {
-                method: 'POST',
-                body: formData
-            });
+                const response = await fetch('http://localhost:5000/api/translate', {
+                    method: 'POST',
+                    body: formData
+                });
 
-            if (!response.ok) {
-                const errorText = await response.text();
-                return { success: false, error: errorText || 'Server error' };
-            }
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    return { success: false, error: errorText || 'Server error' };
+                }
 
-            const translatedContent = await response.text();
-            return {
-                success: true,
-                translatedContent
-            };
+                // Parse JSON to get downloadUrl
+                const json = await response.json();
+                if (!json.success || !json.downloadUrl) {
+                    return { success: false, error: json.error || 'Translation failed' };
+                }
+
+                // Fetch the actual SRT file content from the downloadUrl
+                const srtResponse = await fetch('http://localhost:5000' + json.downloadUrl);
+                if (!srtResponse.ok) {
+                    return { success: false, error: 'Failed to download translated SRT file' };
+                }
+                const translatedContent = await srtResponse.text();
+                return {
+                    success: true,
+                    translatedContent
+                };
             } catch (err) {
-            return { success: false, error: err.message || 'Network error' };
+                return { success: false, error: err.message || 'Network error' };
             }
         }
 
