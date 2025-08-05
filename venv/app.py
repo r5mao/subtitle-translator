@@ -498,8 +498,8 @@ def download_file(file_id):
         File download response or error message
     """
     try:
-        # Validate file_id format
-        if not re.match(r'^[a-f0-9-]{36}_.*\.srt, file_id' + '_dummy.srt'):
+        # Validate file_id format (should be a UUID)
+        if not re.match(r'^[a-f0-9-]{36}$', file_id):
             return jsonify({'error': 'Invalid file ID'}), 400
         
         # Find the file in temp directory
