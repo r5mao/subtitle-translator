@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SRT Subtitle Translator sfdasdss</title>
+    <title>SRT Subtitle Translator</title>
     <style>
         * {
             margin: 0;
@@ -486,30 +486,27 @@
             }
         });
 
-        // Simulated translation function (replace with actual API call)
+        // Actual translation function: sends formData to Python backend API
         async function simulateTranslation(formData) {
-            return new Promise((resolve) => {
-                setTimeout(() => {
-                    // This simulates a successful translation
-                    // In a real implementation, you'd send formData to your Python backend
-                    const sampleTranslatedSRT = `1
-00:00:01,000 --> 00:00:04,000
-This is a sample translated subtitle
-
-2
-00:00:05,000 --> 00:00:08,000
-Translation completed successfully
-
-3
-00:00:09,000 --> 00:00:12,000
-Download your translated file below`;
-
-                    resolve({
-                        success: true,
-                        translatedContent: sampleTranslatedSRT
-                    });
-                }, 2000 + Math.random() * 2000); // 2-4 second delay
+            try {
+            const response = await fetch('/api/translate', {
+                method: 'POST',
+                body: formData
             });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                return { success: false, error: errorText || 'Server error' };
+            }
+
+            const translatedContent = await response.text();
+            return {
+                success: true,
+                translatedContent
+            };
+            } catch (err) {
+            return { success: false, error: err.message || 'Network error' };
+            }
         }
 
         // Language validation
