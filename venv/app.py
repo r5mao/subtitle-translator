@@ -18,7 +18,7 @@ Key Features:
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import asyncio
-from googletrans import AsyncTranslator
+from googletrans import Translator
 import re
 import os
 import tempfile
@@ -175,9 +175,8 @@ class SRTParser:
         return '\n'.join(srt_content)
 
 
-class TranslationService:
     """
-    Handles text translation using Google Translate API (async version).
+    Handles text translation using Google Translate API (async/await with Translator from googletrans 4.0.2).
     """
     def __init__(self):
         self.language_names = {
@@ -188,7 +187,7 @@ class TranslationService:
             'fi': 'Finnish', 'pl': 'Polish', 'tr': 'Turkish', 'he': 'Hebrew'
         }
 
-    async def translate_text(self, text: str, source_lang: str, target_lang: str, translator: AsyncTranslator) -> str:
+    async def translate_text(self, text: str, source_lang: str, target_lang: str, translator: Translator) -> str:
         try:
             cleaned_text = self._preprocess_subtitle_text(text)
             if not cleaned_text.strip():
@@ -211,7 +210,7 @@ class TranslationService:
         translated_entries = []
         total_entries = len(entries)
         logger.info(f"Starting translation of {total_entries} entries from {source_lang} to {target_lang}")
-        async with AsyncTranslator() as translator:
+        async with Translator() as translator:
             for index, entry in enumerate(entries):
                 try:
                     translated_lines = []
@@ -245,6 +244,9 @@ class TranslationService:
         text = text.strip()
         text = re.sub(r'\s+', ' ', text)
         return text
+
+
+# ...existing code...
 
 # Initialize translation service
 translation_service = TranslationService()
