@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SRT Subtitle Translator sfdasdss</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            max-width: 600px;
+            width: 100%;
+            animation: fadeInUp 0.6s ease-out;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #444;
+            font-size: 1.1em;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .file-input {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .file-input-display {
+            display: flex;
+            align-items: center;
+            padding: 15px 20px;
+            border: 2px dashed #667eea;
+            border-radius: 12px;
+            background: #f8f9ff;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            min-height: 60px;
+        }
+
+        .file-input-display:hover {
+            border-color: #764ba2;
+            background: #f0f2ff;
+            transform: translateY(-2px);
+        }
+
+        .file-input-display.has-file {
+            border-style: solid;
+            background: #e8f5e8;
+            border-color: #4caf50;
+        }
+
+        .file-icon {
+            margin-right: 12px;
+            font-size: 1.5em;
+        }
+
+        .file-text {
+            flex: 1;
+            color: #666;
+        }
+
+        .file-text.has-file {
+            color: #2e7d32;
+            font-weight: 600;
+        }
+
+        select {
+            width: 100%;
+            padding: 15px 20px;
+            border: 2px solid #e1e5e9;
+            border-radius: 12px;
+            font-size: 1em;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .translate-btn {
+            width: 100%;
+            padding: 18px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.2em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .translate-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        .translate-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .loading-spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid transparent;
+            border-top: 2px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .download-section {
+            display: none;
+            text-align: center;
+            padding: 25px;
+            background: #f8f9ff;
+            border-radius: 12px;
+            border: 2px solid #667eea;
+        }
+
+        .download-btn {
+            padding: 15px 30px;
+            background: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .download-btn:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(76, 175, 80, 0.3);
+        }
+
+        .success-message {
+            color: #2e7d32;
+            font-weight: 600;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+        }
+
+        .error-message {
+            display: none;
+            color: #d32f2f;
+            background: #ffebee;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #d32f2f;
+        }
+
+        .progress-bar {
+            display: none;
+            width: 100%;
+            height: 6px;
+            background: #e1e5e9;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s ease;
+            border-radius: 3px;
+        }
+
+        .info-section {
+            background: #e8f4fd;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            border-left: 4px solid #2196f3;
+        }
+
+        .info-title {
+            font-weight: 600;
+            color: #1976d2;
+            margin-bottom: 8px;
+        }
+
+        .info-text {
+            color: #424242;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 SRT Translator</h1>
+        
+        <div class="info-section">
+            <div class="info-title">How it works:</div>
+            <div class="info-text">Upload your SRT subtitle file, select source and target languages, then download your translated subtitles with preserved timing.</div>
+        </div>
+
+        <form id="translationForm" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="srtFile">Select SRT File:</label>
+                <div class="file-input-wrapper">
+                    <input type="file" id="srtFile" name="srtFile" accept=".srt" class="file-input" required>
+                    <div class="file-input-display" id="fileDisplay">
+                        <span class="file-icon">📁</span>
+                        <span class="file-text">Click to browse or drag SRT file here</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="sourceLanguage">Original Language:</label>
+                <select id="sourceLanguage" name="sourceLanguage" required>
+                    <option value="">Select source language</option>
+                    <option value="en">English</option>
+                    <option value="es">Spanish</option>
+                    <option value="fr">French</option>
+                    <option value="de">German</option>
+                    <option value="it">Italian</option>
+                    <option value="pt">Portuguese</option>
+                    <option value="ru">Russian</option>
+                    <option value="zh">Chinese</option>
+                    <option value="ja">Japanese</option>
+                    <option value="ko">Korean</option>
+                    <option value="ar">Arabic</option>
+                    <option value="hi">Hindi</option>
+                    <option value="nl">Dutch</option>
+                    <option value="sv">Swedish</option>
+                    <option value="da">Danish</option>
+                    <option value="no">Norwegian</option>
+                    <option value="fi">Finnish</option>
+                    <option value="pl">Polish</option>
+                    <option value="tr">Turkish</option>
+                    <option value="he">Hebrew</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="targetLanguage">Target Language:</label>
+                <select id="targetLanguage" name="targetLanguage" required>
+                    <option value="">Select target language</option>
+                    <option value="en">English</option>
+                    <option value="es">Spanish</option>
+                    <option value="fr">French</option>
+                    <option value="de">German</option>
+                    <option value="it">Italian</option>
+                    <option value="pt">Portuguese</option>
+                    <option value="ru">Russian</option>
+                    <option value="zh">Chinese</option>
+                    <option value="ja">Japanese</option>
+                    <option value="ko">Korean</option>
+                    <option value="ar">Arabic</option>
+                    <option value="hi">Hindi</option>
+                    <option value="nl">Dutch</option>
+                    <option value="sv">Swedish</option>
+                    <option value="da">Danish</option>
+                    <option value="no">Norwegian</option>
+                    <option value="fi">Finnish</option>
+                    <option value="pl">Polish</option>
+                    <option value="tr">Turkish</option>
+                    <option value="he">Hebrew</option>
+                </select>
+            </div>
+
+            <div class="error-message" id="errorMessage"></div>
+            <div class="progress-bar" id="progressBar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+
+            <button type="submit" class="translate-btn" id="translateBtn">
+                <span class="loading-spinner" id="loadingSpinner"></span>
+                <span id="btnText">Translate Subtitles</span>
+            </button>
+        </form>
+
+        <div class="download-section" id="downloadSection">
+            <div class="success-message">Translation completed successfully! 🎉</div>
+            <a href="#" class="download-btn" id="downloadBtn" download>
+                📥 Download Translated SRT
+            </a>
+        </div>
+    </div>
+
+    <script>
+        // File input handling with visual feedback
+        const fileInput = document.getElementById('srtFile');
+        const fileDisplay = document.getElementById('fileDisplay');
+        const fileIcon = fileDisplay.querySelector('.file-icon');
+        const fileText = fileDisplay.querySelector('.file-text');
+
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                fileDisplay.classList.add('has-file');
+                fileText.classList.add('has-file');
+                fileText.textContent = `Selected: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+                fileIcon.textContent = '✅';
+            } else {
+                resetFileInput();
+            }
+        });
+
+        function resetFileInput() {
+            fileDisplay.classList.remove('has-file');
+            fileText.classList.remove('has-file');
+            fileText.textContent = 'Click to browse or drag SRT file here';
+            fileIcon.textContent = '📁';
+        }
+
+        // Drag and drop functionality
+        fileDisplay.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            fileDisplay.style.borderColor = '#764ba2';
+            fileDisplay.style.background = '#f0f2ff';
+        });
+
+        fileDisplay.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            fileDisplay.style.borderColor = '#667eea';
+            fileDisplay.style.background = '#f8f9ff';
+        });
+
+        fileDisplay.addEventListener('drop', function(e) {
+            e.preventDefault();
+            const files = e.dataTransfer.files;
+            if (files.length > 0 && files[0].name.endsWith('.srt')) {
+                fileInput.files = files;
+                fileInput.dispatchEvent(new Event('change'));
+            }
+            fileDisplay.style.borderColor = '#667eea';
+            fileDisplay.style.background = '#f8f9ff';
+        });
+
+        // Form submission and translation logic
+        document.getElementById('translationForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const translateBtn = document.getElementById('translateBtn');
+            const loadingSpinner = document.getElementById('loadingSpinner');
+            const btnText = document.getElementById('btnText');
+            const errorMessage = document.getElementById('errorMessage');
+            const downloadSection = document.getElementById('downloadSection');
+            const progressBar = document.getElementById('progressBar');
+            const progressFill = document.getElementById('progressFill');
+
+            // Reset UI state
+            errorMessage.style.display = 'none';
+            downloadSection.style.display = 'none';
+            progressBar.style.display = 'block';
+            progressFill.style.width = '10%';
+
+            // Show loading state
+            translateBtn.disabled = true;
+            loadingSpinner.style.display = 'inline-block';
+            btnText.textContent = 'Translating...';
+
+            try {
+                // Simulate translation progress
+                let progress = 10;
+                const progressInterval = setInterval(() => {
+                    progress += Math.random() * 20;
+                    if (progress > 90) progress = 90;
+                    progressFill.style.width = progress + '%';
+                }, 500);
+
+                // Here you would make the actual API call to your Python backend
+                // For demo purposes, we'll simulate the translation process
+                const response = await simulateTranslation(formData);
+                
+                clearInterval(progressInterval);
+                progressFill.style.width = '100%';
+
+                if (response.success) {
+                    // Create download link with translated content
+                    const blob = new Blob([response.translatedContent], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    
+                    const downloadBtn = document.getElementById('downloadBtn');
+                    downloadBtn.href = url;
+                    
+                    const originalFileName = formData.get('srtFile').name;
+                    const targetLang = formData.get('targetLanguage');
+                    const newFileName = originalFileName.replace('.srt', `_${targetLang}.srt`);
+                    downloadBtn.download = newFileName;
+                    
+                    downloadSection.style.display = 'block';
+                    
+                    // Smooth scroll to download section
+                    downloadSection.scrollIntoView({ behavior: 'smooth' });
+                } else {
+                    throw new Error(response.error || 'Translation failed');
+                }
+
+            } catch (error) {
+                console.error('Translation error:', error);
+                errorMessage.textContent = `Error: ${error.message}. Please check your file format and try again.`;
+                errorMessage.style.display = 'block';
+                progressFill.style.width = '0%';
+            } finally {
+                // Reset button state
+                translateBtn.disabled = false;
+                loadingSpinner.style.display = 'none';
+                btnText.textContent = 'Translate Subtitles';
+                
+                setTimeout(() => {
+                    progressBar.style.display = 'none';
+                    progressFill.style.width = '0%';
+                }, 1000);
+            }
+        });
+
+        // Simulated translation function (replace with actual API call)
+        async function simulateTranslation(formData) {
+            return new Promise((resolve) => {
+                setTimeout(() => {
+                    // This simulates a successful translation
+                    // In a real implementation, you'd send formData to your Python backend
+                    const sampleTranslatedSRT = `1
+00:00:01,000 --> 00:00:04,000
+This is a sample translated subtitle
+
+2
+00:00:05,000 --> 00:00:08,000
+Translation completed successfully
+
+3
+00:00:09,000 --> 00:00:12,000
+Download your translated file below`;
+
+                    resolve({
+                        success: true,
+                        translatedContent: sampleTranslatedSRT
+                    });
+                }, 2000 + Math.random() * 2000); // 2-4 second delay
+            });
+        }
+
+        // Language validation
+        document.getElementById('sourceLanguage').addEventListener('change', validateLanguages);
+        document.getElementById('targetLanguage').addEventListener('change', validateLanguages);
+
+        function validateLanguages() {
+            const source = document.getElementById('sourceLanguage').value;
+            const target = document.getElementById('targetLanguage').value;
+            const errorMessage = document.getElementById('errorMessage');
+
+            if (source && target && source === target) {
+                errorMessage.textContent = 'Source and target languages cannot be the same.';
+                errorMessage.style.display = 'block';
+                document.getElementById('translateBtn').disabled = true;
+            } else {
+                errorMessage.style.display = 'none';
+                document.getElementById('translateBtn').disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
