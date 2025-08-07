@@ -69,112 +69,57 @@ class SRTEntry:
         text_content = '\n'.join(self.text_lines)
         return f"{self.sequence_number}\n{self.start_time} --> {self.end_time}\n{text_content}\n"
 
+
 class SRTParser:
     """
     Handles parsing and processing of SRT subtitle files.
-    
-    This class provides methods to:
-    - Parse SRT files into structured data
-    - Validate SRT format compliance
-    - Convert parsed data back to SRT format
-    - Handle various encoding issues and format variations
     """
-    
     @staticmethod
     def parse_srt_content(content: str) -> List[SRTEntry]:
-        """
-        Parses SRT file content into a list of SRTEntry objects.
-        
-        The parsing process:
-        1. Splits content into individual subtitle blocks
-        2. Extracts sequence numbers, timing, and text for each block
-        3. Validates format compliance
-        4. Returns structured data for translation processing
-        
-        Args:
-            content: Raw SRT file content as string
-            
-        Returns:
-            List of SRTEntry objects representing each subtitle
-            
-        Raises:
-            ValueError: If SRT format is invalid or corrupted
-        """
         entries = []
-        
-        # Split content into blocks (separated by double newlines)
         blocks = re.split(r'\n\s*\n', content.strip())
-        
         for block_index, block in enumerate(blocks):
             if not block.strip():
                 continue
-                
             try:
                 lines = block.strip().split('\n')
-                
                 if len(lines) < 3:
                     logger.warning(f"Skipping malformed block {block_index + 1}: insufficient lines")
                     continue
-                
-                # Parse sequence number (first line)
                 try:
                     sequence_number = int(lines[0].strip())
                 except ValueError:
                     logger.warning(f"Invalid sequence number in block {block_index + 1}: {lines[0]}")
                     continue
-                
-                # Parse timing line (second line)
                 timing_pattern = r'(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})'
                 timing_match = re.match(timing_pattern, lines[1].strip())
-                
                 if not timing_match:
                     logger.warning(f"Invalid timing format in block {sequence_number}: {lines[1]}")
                     continue
-                
                 start_time = timing_match.group(1)
                 end_time = timing_match.group(2)
-                
-                # Extract text lines (everything after timing line)
                 text_lines = [line.strip() for line in lines[2:] if line.strip()]
-                
                 if not text_lines:
                     logger.warning(f"No text content found in block {sequence_number}")
                     continue
-                
                 entries.append(SRTEntry(sequence_number, start_time, end_time, text_lines))
-                
             except Exception as e:
                 logger.error(f"Error parsing block {block_index + 1}: {str(e)}")
                 continue
-        
         if not entries:
             raise ValueError("No valid SRT entries found. Please check file format.")
-        
         logger.info(f"Successfully parsed {len(entries)} subtitle entries")
         return entries
-    
+
     @staticmethod
     def entries_to_srt(entries: List[SRTEntry]) -> str:
-        """
-        Converts a list of SRTEntry objects back to SRT file format.
-        
-        This method rebuilds the complete SRT file content while maintaining
-        proper formatting and ensuring compatibility with subtitle players.
-        
-        Args:
-            entries: List of SRTEntry objects to convert
-            
-        Returns:
-            Complete SRT file content as string
-        """
         srt_content = []
-        
         for entry in entries:
             srt_content.append(entry.to_srt_format())
-        
         return '\n'.join(srt_content)
 
 
+class TranslationService:
     """
     Handles text translation using Google Translate API (async/await with Translator from googletrans 4.0.2).
     """
