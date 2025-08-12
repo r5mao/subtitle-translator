@@ -132,52 +132,62 @@ class TranslationService:
             'fi': 'Finnish', 'pl': 'Polish', 'tr': 'Turkish', 'he': 'Hebrew'
         }
 
-    async def translate_text(self, text: str, source_lang: str, target_lang: str, translator: Translator) -> str:
-        try:
-            cleaned_text = self._preprocess_subtitle_text(text)
-            if not cleaned_text.strip():
-                return text
-            result = await translator.translate(
-                cleaned_text,
-                src=source_lang,
-                dest=target_lang
-            )
-            if result and result.text:
-                return self._postprocess_subtitle_text(result.text)
+
+    async def translate_texts(self, texts: list, source_lang: str, target_lang: str, translator: Translator) -> list:
+        # Preprocess all texts
+        cleaned_texts = [self._preprocess_subtitle_text(t) if t.strip() else t for t in texts]
+        # Prepare a mask for empty lines
+        is_empty = [not t.strip() for t in texts]
+        # Only translate non-empty lines
+        to_translate = [t for t in cleaned_texts if t.strip()]
+        if not to_translate:
+            return texts
+        # Batch translate
+        results = await translator.translate(to_translate, src=source_lang, dest=target_lang)
+        # googletrans returns a list if input is a list
+        if isinstance(results, list):
+            translated = [self._postprocess_subtitle_text(r.text) if hasattr(r, 'text') else '' for r in results]
+        else:
+            translated = [self._postprocess_subtitle_text(results.text)]
+        # Reconstruct the output, preserving empty lines
+        output = []
+        idx = 0
+        for empty, orig in zip(is_empty, texts):
+            if empty:
+                output.append(orig)
             else:
-                logger.warning(f"Empty translation result for: {text[:50]}...")
-                return text
-        except Exception as e:
-            logger.error(f"Translation error for text '{text[:50]}...': {str(e)}")
-            raise Exception(f"Translation failed: {str(e)}")
+                output.append(translated[idx])
+                idx += 1
+        return output
 
     async def translate_subtitle_entries(self, entries: List[SRTEntry], source_lang: str, target_lang: str) -> List[SRTEntry]:
         translated_entries = []
         total_entries = len(entries)
-        logger.info(f"Starting translation of {total_entries} entries from {source_lang} to {target_lang}")
+        logger.info(f"Starting batch translation of {total_entries} entries from {source_lang} to {target_lang}")
         async with Translator() as translator:
-            for index, entry in enumerate(entries):
-                try:
-                    translated_lines = []
-                    for line in entry.text_lines:
-                        if line.strip():
-                            translated_line = await self.translate_text(line, source_lang, target_lang, translator)
-                            translated_lines.append(translated_line)
-                        else:
-                            translated_lines.append(line)
-                    translated_entry = SRTEntry(
-                        entry.sequence_number,
-                        entry.start_time,
-                        entry.end_time,
-                        translated_lines
-                    )
-                    translated_entries.append(translated_entry)
-                    if (index + 1) % 10 == 0 or (index + 1) == total_entries:
-                        logger.info(f"Translated {index + 1}/{total_entries} entries")
-                except Exception as e:
-                    logger.error(f"Error translating entry {entry.sequence_number}: {str(e)}")
-                    translated_entries.append(entry)
-        logger.info(f"Translation completed successfully")
+            # Collect all lines to translate, preserving entry/line structure
+            all_lines = []
+            entry_line_counts = []
+            for entry in entries:
+                entry_line_counts.append(len(entry.text_lines))
+                all_lines.extend(entry.text_lines)
+            # Batch translate all lines
+            translated_lines = await self.translate_texts(all_lines, source_lang, target_lang, translator)
+            # Reconstruct entries
+            idx = 0
+            for entry, line_count in zip(entries, entry_line_counts):
+                lines = translated_lines[idx:idx+line_count]
+                translated_entry = SRTEntry(
+                    entry.sequence_number,
+                    entry.start_time,
+                    entry.end_time,
+                    lines
+                )
+                translated_entries.append(translated_entry)
+                idx += line_count
+                if (entry.sequence_number % 10 == 0) or (entry == entries[-1]):
+                    logger.info(f"Translated entry {entry.sequence_number}/{total_entries}")
+        logger.info(f"Batch translation completed successfully")
         return translated_entries
 
     def _preprocess_subtitle_text(self, text: str) -> str:
