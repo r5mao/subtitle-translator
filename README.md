@@ -33,13 +33,27 @@ A web application for translating SRT subtitle files between languages using Goo
    pip install flask flask-cors googletrans==4.0.2
    ```
 
+
 ## Usage
-1. Start the Flask backend:
-   ```
-   python venv/app.py
-   ```
-   The API will be available at http://localhost:5000
-2. Open `index.html` in your browser to use the web interface.
+
+### 1. Start the Flask backend (API server):
+```
+python venv/app.py
+```
+The API will be available at http://localhost:5000
+
+### 2. Serve the frontend (index.html) with a static file server:
+From the `srt-translator` directory, run:
+```
+python -m http.server 8080
+```
+This will serve your frontend files at http://localhost:8080/
+
+Now you can open [http://localhost:8080/index.html](http://localhost:8080/index.html) in your browser to use the web interface.
+
+**Note:**
+- The backend (Flask) and frontend (static server) are separate. The frontend makes API requests to the backend.
+- If you want to use a different port or path, adjust the commands and URLs accordingly.
 
 ## API Endpoints
 - `GET /api/health` — Health check
