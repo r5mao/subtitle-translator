@@ -1,3 +1,6 @@
+import threading
+# In-memory progress store (for demo; use Redis or similar for production)
+translation_progress = {}
 #!/usr/bin/env python3
 """
 SRT Subtitle Translation Flask Backend
@@ -276,8 +279,6 @@ class TranslationService:
         return text
 
 
-# ...existing code...
-
 # Initialize translation service
 translation_service = TranslationService()
 
@@ -321,149 +322,176 @@ def translate_srt():
     Returns:
         JSON response with download URL or error message
     """
+    # Generate a unique task ID for this translation
+    task_id = str(uuid.uuid4())
+    translation_progress[task_id] = {'progress': 0, 'status': 'started'}
+    # Validate request
+    if 'srtFile' not in request.files:
+        return jsonify({'error': 'No SRT file provided'}), 400
+    if 'sourceLanguage' not in request.form or 'targetLanguage' not in request.form:
+        return jsonify({'error': 'Source and target languages required'}), 400
+    srt_file = request.files['srtFile']
+    source_lang = request.form['sourceLanguage']
+    target_lang = request.form['targetLanguage']
+    # Validate file
+    if srt_file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+    allowed_exts = ('.srt', '.ass', '.ssa', '.sub')
+    if not srt_file.filename.lower().endswith(allowed_exts):
+        return jsonify({'error': 'File must be a subtitle file (SRT, ASS, SSA, SUB)'}), 400
+    # Validate languages
+    if source_lang == target_lang:
+        return jsonify({'error': 'Source and target languages cannot be the same'}), 400
+    if source_lang not in translation_service.language_names:
+        return jsonify({'error': f'Unsupported source language: {source_lang}'}), 400
+    if target_lang not in translation_service.language_names:
+        return jsonify({'error': f'Unsupported target language: {target_lang}'}), 400
+    # Read and decode file content
     try:
-        # Validate request
-        if 'srtFile' not in request.files:
-            return jsonify({'error': 'No SRT file provided'}), 400
-        
-        if 'sourceLanguage' not in request.form or 'targetLanguage' not in request.form:
-            return jsonify({'error': 'Source and target languages required'}), 400
-        
-        srt_file = request.files['srtFile']
-        source_lang = request.form['sourceLanguage']
-        target_lang = request.form['targetLanguage']
-        
-        # Validate file
-        if srt_file.filename == '':
-            return jsonify({'error': 'No file selected'}), 400
-        
-        allowed_exts = ('.srt', '.ass', '.ssa', '.sub')
-        if not srt_file.filename.lower().endswith(allowed_exts):
-            return jsonify({'error': 'File must be a subtitle file (SRT, ASS, SSA, SUB)'}), 400
-        
-        # Validate languages
-        if source_lang == target_lang:
-            return jsonify({'error': 'Source and target languages cannot be the same'}), 400
-        
-        if source_lang not in translation_service.language_names:
-            return jsonify({'error': f'Unsupported source language: {source_lang}'}), 400
-        
-        if target_lang not in translation_service.language_names:
-            return jsonify({'error': f'Unsupported target language: {target_lang}'}), 400
-        
-        # Read and decode file content
-        try:
-            file_content = srt_file.read()
-            
-            # Try different encodings to handle various file formats
-            encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252']
-            content = None
-            
-            for encoding in encodings:
-                try:
-                    content = file_content.decode(encoding)
-                    logger.info(f"Successfully decoded file using {encoding} encoding")
-                    break
-                except UnicodeDecodeError:
-                    continue
-            
-            if content is None:
-                return jsonify({'error': 'Unable to decode file. Please ensure it\'s a valid text file.'}), 400
-            
-        except Exception as e:
-            logger.error(f"Error reading file: {str(e)}")
-            return jsonify({'error': 'Error reading file content'}), 400
-        
-
-        # Note translation start time
-        translation_start_time = datetime.now()
-        logger.info(f"Translation started at {translation_start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-
-        # Parse subtitle content (auto-detect format)
-        try:
-            original_filename = srt_file.filename
-            base_name = os.path.splitext(original_filename)[0]
-            fmt, parsed = SubtitleParser.parse(content)
-            logger.info(f"Parsed subtitle file as format: {fmt}")
-        except ValueError as e:
-            logger.error(f"Subtitle parsing error: {str(e)}")
-            return jsonify({'error': f'Invalid subtitle format: {str(e)}'}), 400
-
-        # Translate and re-serialize
-        try:
-            # Start timing
-            translation_timer_start = datetime.now()
-            if fmt == 'srt':
-                translated_entries = asyncio.run(
-                    translation_service.translate_subtitle_entries([
-                        SRTEntry(e['sequence_number'], e['start_time'], e['end_time'], e['text_lines']) for e in parsed
-                    ], source_lang, target_lang)
-                )
-                translated_content = SubtitleParser.to_srt([
-                    {'sequence_number': e.sequence_number, 'start_time': e.start_time, 'end_time': e.end_time, 'text_lines': e.text_lines}
-                    for e in translated_entries
-                ])
-                translated_filename = f"{base_name}_{target_lang}.srt"
-            elif fmt == 'ass':
-                texts = [d['text'] for d in parsed['dialogues']]
-                translated_texts = asyncio.run(
-                    translation_service.translate_texts(texts, source_lang, target_lang, Translator())
-                )
-                translated_content = SubtitleParser.to_ass(parsed, translated_texts)
-                translated_filename = f"{base_name}_{target_lang}.ass"
-            elif fmt == 'sub':
-                texts = [d['text'] for d in parsed['subs']]
-                translated_texts = asyncio.run(
-                    translation_service.translate_texts(texts, source_lang, target_lang, Translator())
-                )
-                translated_content = SubtitleParser.to_sub(parsed, translated_texts)
-                translated_filename = f"{base_name}_{target_lang}.sub"
-            else:
-                raise ValueError('Unsupported subtitle format')
-            logger.info(f"Translation completed for {fmt} format")
-            # End timing
-            translation_timer_end = datetime.now()
-            translation_duration = translation_timer_end - translation_timer_start
-            total_ms = int(translation_duration.total_seconds() * 1000)
-            duration_minutes = total_ms // 60000
-            duration_seconds = (total_ms % 60000) // 1000
-            duration_ms = total_ms % 1000
-            if duration_minutes:
-                duration_str = f"{duration_minutes} mins {duration_seconds} seconds {duration_ms} ms"
-            elif duration_seconds:
-                duration_str = f"{duration_seconds} seconds {duration_ms} ms"
-            else:
-                duration_str = f"{duration_ms} ms"
-            logger.info(f"Translation took {duration_str}")
-        except Exception as e:
-            logger.error(f"Translation error: {str(e)}")
-            return jsonify({'error': f'Translation failed: {str(e)}'}), 500
-        
-        # Create temporary file for download
-        try:
-            file_id = str(uuid.uuid4())
-            temp_dir = tempfile.gettempdir()
-            temp_file_path = os.path.join(temp_dir, f"{file_id}_{translated_filename}")
-            with open(temp_file_path, 'w', encoding='utf-8') as temp_file:
-                temp_file.write(translated_content)
-            logger.info(f"Created translated file: {temp_file_path}")
-            return jsonify({
-                'success': True,
-                'message': 'Translation completed successfully',
-                'downloadUrl': f'/api/download/{file_id}',
-                'filename': translated_filename,
-                'sourceLanguage': translation_service.language_names.get(source_lang, source_lang),
-                'targetLanguage': translation_service.language_names.get(target_lang, target_lang),
-                'translationStartedAt': translation_start_time.strftime('%Y-%m-%d %H:%M:%S'),
-                'translationDuration': duration_str
-            })
-        except Exception as e:
-            logger.error(f"File creation error: {str(e)}")
-            return jsonify({'error': 'Error creating download file'}), 500
-    
+        file_content = srt_file.read()
+        encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252']
+        content = None
+        for encoding in encodings:
+            try:
+                content = file_content.decode(encoding)
+                logger.info(f"Successfully decoded file using {encoding} encoding")
+                break
+            except UnicodeDecodeError:
+                continue
+        if content is None:
+            return jsonify({'error': 'Unable to decode file. Please ensure it\'s a valid text file.'}), 400
     except Exception as e:
-        logger.error(f"Unexpected error in translate_srt: {str(e)}")
-        return jsonify({'error': 'Internal server error'}), 500
+        logger.error(f"Error reading file: {str(e)}")
+        return jsonify({'error': 'Error reading file content'}), 400
+    # Note translation start time
+    translation_start_time = datetime.now()
+    logger.info(f"Translation started at {translation_start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    # Parse subtitle content (auto-detect format)
+    try:
+        original_filename = srt_file.filename
+        base_name = os.path.splitext(original_filename)[0]
+        fmt, parsed = SubtitleParser.parse(content)
+        logger.info(f"Parsed subtitle file as format: {fmt}")
+    except ValueError as e:
+        logger.error(f"Subtitle parsing error: {str(e)}")
+        return jsonify({'error': f'Invalid subtitle format: {str(e)}'}), 400
+    # Translate and re-serialize
+    try:
+        # Start timing
+        translation_timer_start = datetime.now()
+        def update_progress(current, total):
+            percent = int((current / total) * 100)
+            translation_progress[task_id]['progress'] = percent
+        if fmt == 'srt':
+            def srt_progress(entries, source_lang, target_lang):
+                translated_entries = []
+                total_entries = len(entries)
+                async def do_translate():
+                    async with Translator() as translator:
+                        all_lines = []
+                        entry_line_counts = []
+                        for entry in entries:
+                            entry_line_counts.append(len(entry.text_lines))
+                            all_lines.extend(entry.text_lines)
+                        batch_size = 100
+                        translated_lines = []
+                        for i in range(0, len(all_lines), batch_size):
+                            batch = all_lines[i:i+batch_size]
+                            translated_batch = await translation_service.translate_texts(batch, source_lang, target_lang, translator)
+                            translated_lines.extend(translated_batch)
+                            update_progress(min(i+batch_size, len(all_lines)), len(all_lines))
+                        idx = 0
+                        for entry, line_count in zip(entries, entry_line_counts):
+                            lines = translated_lines[idx:idx+line_count]
+                            translated_entry = SRTEntry(
+                                entry.sequence_number,
+                                entry.start_time,
+                                entry.end_time,
+                                lines
+                            )
+                            translated_entries.append(translated_entry)
+                            idx += line_count
+                            update_progress(idx, len(all_lines))
+                asyncio.run(do_translate())
+                return translated_entries
+            translated_entries = srt_progress([
+                SRTEntry(e['sequence_number'], e['start_time'], e['end_time'], e['text_lines']) for e in parsed
+            ], source_lang, target_lang)
+            translated_content = SubtitleParser.to_srt([
+                {'sequence_number': e.sequence_number, 'start_time': e.start_time, 'end_time': e.end_time, 'text_lines': e.text_lines}
+                for e in translated_entries
+            ])
+            translated_filename = f"{base_name}_{target_lang}.srt"
+        elif fmt == 'ass':
+            texts = [d['text'] for d in parsed['dialogues']]
+            total_lines = len(texts)
+            translated_texts = []
+            async def do_translate_ass():
+                async with Translator() as translator:
+                    batch_size = 100
+                    for i in range(0, total_lines, batch_size):
+                        batch = texts[i:i+batch_size]
+                        translated_batch = await translation_service.translate_texts(batch, source_lang, target_lang, translator)
+                        translated_texts.extend(translated_batch)
+                        update_progress(min(i+batch_size, total_lines), total_lines)
+            asyncio.run(do_translate_ass())
+            translated_content = SubtitleParser.to_ass(parsed, translated_texts)
+            translated_filename = f"{base_name}_{target_lang}.ass"
+        elif fmt == 'sub':
+            texts = [d['text'] for d in parsed['subs']]
+            total_lines = len(texts)
+            translated_texts = []
+            async def do_translate_sub():
+                async with Translator() as translator:
+                    batch_size = 100
+                    for i in range(0, total_lines, batch_size):
+                        batch = texts[i:i+batch_size]
+                        translated_batch = await translation_service.translate_texts(batch, source_lang, target_lang, translator)
+                        translated_texts.extend(translated_batch)
+                        update_progress(min(i+batch_size, total_lines), total_lines)
+            asyncio.run(do_translate_sub())
+            translated_content = SubtitleParser.to_sub(parsed, translated_texts)
+            translated_filename = f"{base_name}_{target_lang}.sub"
+        else:
+            raise ValueError('Unsupported subtitle format')
+        translation_progress[task_id]['progress'] = 100
+        logger.info(f"Translation completed for {fmt} format")
+        # End timing
+        translation_timer_end = datetime.now()
+        translation_duration = translation_timer_end - translation_timer_start
+        total_ms = int(translation_duration.total_seconds() * 1000)
+        duration_minutes = total_ms // 60000
+        duration_seconds = (total_ms % 60000) // 1000
+        duration_ms = total_ms % 1000
+        if duration_minutes:
+            duration_str = f"{duration_minutes} mins {duration_seconds} seconds {duration_ms} ms"
+        elif duration_seconds:
+            duration_str = f"{duration_seconds} seconds {duration_ms} ms"
+        else:
+            duration_str = f"{duration_ms} ms"
+        logger.info(f"Translation took {duration_str}")
+        # Create temporary file for download
+        file_id = str(uuid.uuid4())
+        temp_dir = tempfile.gettempdir()
+        temp_file_path = os.path.join(temp_dir, f"{file_id}_{translated_filename}")
+        with open(temp_file_path, 'w', encoding='utf-8') as temp_file:
+            temp_file.write(translated_content)
+        logger.info(f"Created translated file: {temp_file_path}")
+        return jsonify({
+            'success': True,
+            'message': 'Translation completed successfully',
+            'downloadUrl': f'/api/download/{file_id}',
+            'filename': translated_filename,
+            'sourceLanguage': translation_service.language_names.get(source_lang, source_lang),
+            'targetLanguage': translation_service.language_names.get(target_lang, target_lang),
+            'translationStartedAt': translation_start_time.strftime('%Y-%m-%d %H:%M:%S'),
+            'translationDuration': duration_str,
+            'taskId': task_id
+        })
+    except Exception as e:
+        logger.error(f"Translation error: {str(e)}")
+        return jsonify({'error': f'Translation failed: {str(e)}'}), 500
+    # ...existing code...
 
 @app.route('/api/download/<file_id>', methods=['GET'])
 def download_file(file_id):
@@ -524,6 +552,21 @@ def download_file(file_id):
     except Exception as e:
         logger.error(f"Download error: {str(e)}")
         return jsonify({'error': 'Error downloading file'}), 500
+
+@app.route('/api/translate/progress/<task_id>')
+def sse_translation_progress(task_id):
+    def event_stream():
+        last_progress = -1
+        import time
+        while True:
+            progress = translation_progress.get(task_id, {}).get('progress', 0)
+            if progress != last_progress:
+                yield f"data: {progress}\n\n"
+                last_progress = progress
+            if progress >= 100:
+                return
+            time.sleep(0.5)
+    return app.response_class(event_stream(), mimetype='text/event-stream')
 
 @app.errorhandler(413)
 def file_too_large(error):
