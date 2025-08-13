@@ -465,7 +465,7 @@
                     const originalFileName = formData.get('srtFile').name;
                     const targetLang = formData.get('targetLanguage');
                     // Replace extension with _<lang>.<ext> for any supported type
-                    const newFileName = originalFileName.replace(/\.(srt|ass|ssa|sub)$/i, `_${targetLang}.$1`);
+                    const newFileName = originalFileName.replace(/\.(srt|ass|ssa|sub)$/i, `_google-trans_${targetLang}.$1`);
                     downloadBtn.download = newFileName;
                     
                     downloadSection.style.display = 'block';
