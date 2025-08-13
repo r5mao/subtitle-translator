@@ -265,21 +265,23 @@
 </head>
 <body>
     <div class="container">
-        <h1>🎬 SRT Translator</h1>
+    <h1>🎬 Subtitle Translator</h1>
         
         <div class="info-section">
             <div class="info-title">How it works:</div>
-            <div class="info-text">Upload your SRT subtitle file, select source and target languages, then download your translated subtitles with preserved timing.</div>
+            <div class="info-text">
+                Upload your <b>SRT, ASS, SSA, or SUB</b> subtitle file, select source and target languages, then download your translated subtitles with preserved timing and format.
+            </div>
         </div>
 
         <form id="translationForm" enctype="multipart/form-data">
             <div class="form-group">
-                <label for="srtFile">Select SRT File:</label>
+                <label for="srtFile">Select Subtitle File (SRT, ASS, SSA, SUB):</label>
                 <div class="file-input-wrapper">
-                    <input type="file" id="srtFile" name="srtFile" accept=".srt" class="file-input" required>
+                    <input type="file" id="srtFile" name="srtFile" accept=".srt,.ass,.ssa,.sub" class="file-input" required>
                     <div class="file-input-display" id="fileDisplay">
                         <span class="file-icon">📁</span>
-                        <span class="file-text">Click to browse or drag SRT file here</span>
+                        <span class="file-text">Click to browse or drag SRT, ASS, SSA, or SUB file here</span>
                     </div>
                 </div>
             </div>
@@ -399,7 +401,10 @@
         fileDisplay.addEventListener('drop', function(e) {
             e.preventDefault();
             const files = e.dataTransfer.files;
-            if (files.length > 0 && files[0].name.endsWith('.srt')) {
+            if (
+                files.length > 0 &&
+                /\.(srt|ass|ssa|sub)$/i.test(files[0].name)
+            ) {
                 fileInput.files = files;
                 fileInput.dispatchEvent(new Event('change'));
             }
@@ -457,7 +462,8 @@
                     
                     const originalFileName = formData.get('srtFile').name;
                     const targetLang = formData.get('targetLanguage');
-                    const newFileName = originalFileName.replace('.srt', `_${targetLang}.srt`);
+                    // Replace extension with _<lang>.<ext> for any supported type
+                    const newFileName = originalFileName.replace(/\.(srt|ass|ssa|sub)$/i, `_${targetLang}.$1`);
                     downloadBtn.download = newFileName;
                     
                     downloadSection.style.display = 'block';
@@ -470,7 +476,7 @@
 
             } catch (error) {
                 console.error('Translation error:', error);
-                errorMessage.textContent = `Error: ${error.message}. Please check your file format and try again.`;
+                errorMessage.textContent = `Error: ${error.message}. Please check your file format (SRT, ASS, SSA, SUB) and try again.`;
                 errorMessage.style.display = 'block';
                 progressFill.style.width = '0%';
             } finally {

@@ -70,53 +70,103 @@ class SRTEntry:
         return f"{self.sequence_number}\n{self.start_time} --> {self.end_time}\n{text_content}\n"
 
 
-class SRTParser:
+
+class SubtitleParser:
     """
-    Handles parsing and processing of SRT subtitle files.
+    Handles parsing and processing of SRT, ASS, SSA, and SUB subtitle files.
     """
     @staticmethod
-    def parse_srt_content(content: str) -> List[SRTEntry]:
+    def detect_format(content: str) -> str:
+        if re.search(r'^\d+\s*\n\d{2}:\d{2}:\d{2},\d{3}\s*-->', content, re.MULTILINE):
+            return 'srt'
+        if '[Script Info]' in content and '[Events]' in content:
+            return 'ass'
+        if re.search(r'^Dialogue:', content, re.MULTILINE):
+            return 'ass'
+        if re.search(r'^\{\d+\}\{\d+\}', content, re.MULTILINE):
+            return 'sub'
+        return 'unknown'
+
+    @staticmethod
+    def parse(content: str) -> tuple:
+        fmt = SubtitleParser.detect_format(content)
+        if fmt == 'srt':
+            return 'srt', SubtitleParser.parse_srt(content)
+        elif fmt == 'ass':
+            return 'ass', SubtitleParser.parse_ass(content)
+        elif fmt == 'sub':
+            return 'sub', SubtitleParser.parse_sub(content)
+        else:
+            raise ValueError('Unsupported or unknown subtitle format')
+
+    @staticmethod
+    def parse_srt(content: str) -> list:
         entries = []
         blocks = re.split(r'\n\s*\n', content.strip())
-        for block_index, block in enumerate(blocks):
-            if not block.strip():
+        for block in blocks:
+            lines = block.strip().split('\n')
+            if len(lines) < 3:
                 continue
             try:
-                lines = block.strip().split('\n')
-                if len(lines) < 3:
-                    logger.warning(f"Skipping malformed block {block_index + 1}: insufficient lines")
-                    continue
-                try:
-                    sequence_number = int(lines[0].strip())
-                except ValueError:
-                    logger.warning(f"Invalid sequence number in block {block_index + 1}: {lines[0]}")
-                    continue
+                sequence_number = int(lines[0].strip())
                 timing_pattern = r'(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})'
                 timing_match = re.match(timing_pattern, lines[1].strip())
                 if not timing_match:
-                    logger.warning(f"Invalid timing format in block {sequence_number}: {lines[1]}")
                     continue
                 start_time = timing_match.group(1)
                 end_time = timing_match.group(2)
                 text_lines = [line.strip() for line in lines[2:] if line.strip()]
-                if not text_lines:
-                    logger.warning(f"No text content found in block {sequence_number}")
-                    continue
-                entries.append(SRTEntry(sequence_number, start_time, end_time, text_lines))
-            except Exception as e:
-                logger.error(f"Error parsing block {block_index + 1}: {str(e)}")
+                entries.append({'sequence_number': sequence_number, 'start_time': start_time, 'end_time': end_time, 'text_lines': text_lines})
+            except Exception:
                 continue
-        if not entries:
-            raise ValueError("No valid SRT entries found. Please check file format.")
-        logger.info(f"Successfully parsed {len(entries)} subtitle entries")
         return entries
 
     @staticmethod
-    def entries_to_srt(entries: List[SRTEntry]) -> str:
+    def parse_ass(content: str) -> list:
+        # Only translate Dialogue lines, keep all others as-is
+        lines = content.splitlines()
+        parsed = []
+        for idx, line in enumerate(lines):
+            if line.startswith('Dialogue:'):
+                parts = line.split(',', 9)
+                if len(parts) >= 10:
+                    text = parts[9]
+                    parsed.append({'idx': idx, 'line': line, 'parts': parts, 'text': text})
+        return {'lines': lines, 'dialogues': parsed}
+
+    @staticmethod
+    def parse_sub(content: str) -> list:
+        # MicroDVD SUB: {start}{end}Text
+        lines = content.splitlines()
+        parsed = []
+        for idx, line in enumerate(lines):
+            m = re.match(r'\{(\d+)\}\{(\d+)\}(.*)', line)
+            if m:
+                parsed.append({'idx': idx, 'line': line, 'start': m.group(1), 'end': m.group(2), 'text': m.group(3)})
+        return {'lines': lines, 'subs': parsed}
+
+    @staticmethod
+    def to_srt(entries: list) -> str:
         srt_content = []
         for entry in entries:
-            srt_content.append(entry.to_srt_format())
+            srt_content.append(f"{entry['sequence_number']}\n{entry['start_time']} --> {entry['end_time']}\n" + '\n'.join(entry['text_lines']) + '\n')
         return '\n'.join(srt_content)
+
+    @staticmethod
+    def to_ass(parsed: dict, translated_texts: list) -> str:
+        lines = parsed['lines'][:]
+        for i, d in enumerate(parsed['dialogues']):
+            parts = d['parts'][:]
+            parts[9] = translated_texts[i]
+            lines[d['idx']] = ','.join(parts)
+        return '\n'.join(lines)
+
+    @staticmethod
+    def to_sub(parsed: dict, translated_texts: list) -> str:
+        lines = parsed['lines'][:]
+        for i, d in enumerate(parsed['subs']):
+            lines[d['idx']] = f"{{{d['start']}}}{{{d['end']}}}{translated_texts[i]}"
+        return '\n'.join(lines)
 
 
 class TranslationService:
@@ -298,62 +348,66 @@ def translate_srt():
             logger.error(f"Error reading file: {str(e)}")
             return jsonify({'error': 'Error reading file content'}), 400
         
-        # Parse SRT content
+        # Parse subtitle content (auto-detect format)
         try:
-            entries = SRTParser.parse_srt_content(content)
-            logger.info(f"Parsed {len(entries)} subtitle entries")
-            
+            original_filename = srt_file.filename
+            base_name = os.path.splitext(original_filename)[0]
+            fmt, parsed = SubtitleParser.parse(content)
+            logger.info(f"Parsed subtitle file as format: {fmt}")
         except ValueError as e:
-            logger.error(f"SRT parsing error: {str(e)}")
-            return jsonify({'error': f'Invalid SRT format: {str(e)}'}), 400
+            logger.error(f"Subtitle parsing error: {str(e)}")
+            return jsonify({'error': f'Invalid subtitle format: {str(e)}'}), 400
         
-        # Translate entries (async)
+        # Translate and re-serialize
         try:
-            translated_entries = asyncio.run(
-                translation_service.translate_subtitle_entries(entries, source_lang, target_lang)
-            )
-            logger.info(f"Translation completed for {len(translated_entries)} entries")
+            if fmt == 'srt':
+                translated_entries = asyncio.run(
+                    translation_service.translate_subtitle_entries([
+                        SRTEntry(e['sequence_number'], e['start_time'], e['end_time'], e['text_lines']) for e in parsed
+                    ], source_lang, target_lang)
+                )
+                translated_content = SubtitleParser.to_srt([
+                    {'sequence_number': e.sequence_number, 'start_time': e.start_time, 'end_time': e.end_time, 'text_lines': e.text_lines}
+                    for e in translated_entries
+                ])
+                translated_filename = f"{base_name}_{target_lang}.srt"
+            elif fmt == 'ass':
+                texts = [d['text'] for d in parsed['dialogues']]
+                translated_texts = asyncio.run(
+                    translation_service.translate_texts(texts, source_lang, target_lang, Translator())
+                )
+                translated_content = SubtitleParser.to_ass(parsed, translated_texts)
+                translated_filename = f"{base_name}_{target_lang}.ass"
+            elif fmt == 'sub':
+                texts = [d['text'] for d in parsed['subs']]
+                translated_texts = asyncio.run(
+                    translation_service.translate_texts(texts, source_lang, target_lang, Translator())
+                )
+                translated_content = SubtitleParser.to_sub(parsed, translated_texts)
+                translated_filename = f"{base_name}_{target_lang}.sub"
+            else:
+                raise ValueError('Unsupported subtitle format')
+            logger.info(f"Translation completed for {fmt} format")
         except Exception as e:
             logger.error(f"Translation error: {str(e)}")
             return jsonify({'error': f'Translation failed: {str(e)}'}), 500
         
-        # Convert back to SRT format
-        try:
-            translated_srt = SRTParser.entries_to_srt(translated_entries)
-            
-        except Exception as e:
-            logger.error(f"SRT generation error: {str(e)}")
-            return jsonify({'error': 'Error generating translated SRT file'}), 500
-        
         # Create temporary file for download
         try:
-            # Generate unique filename
             file_id = str(uuid.uuid4())
-            original_filename = srt_file.filename
-            base_name = os.path.splitext(original_filename)[0]
-            translated_filename = f"{base_name}_{target_lang}.srt"
-            
-            # Create temporary file
             temp_dir = tempfile.gettempdir()
             temp_file_path = os.path.join(temp_dir, f"{file_id}_{translated_filename}")
-            
             with open(temp_file_path, 'w', encoding='utf-8') as temp_file:
-                temp_file.write(translated_srt)
-            
+                temp_file.write(translated_content)
             logger.info(f"Created translated file: {temp_file_path}")
-            
-            # Return success response with download information
             return jsonify({
                 'success': True,
                 'message': 'Translation completed successfully',
                 'downloadUrl': f'/api/download/{file_id}',
                 'filename': translated_filename,
-                'originalEntries': len(entries),
-                'translatedEntries': len(translated_entries),
                 'sourceLanguage': translation_service.language_names.get(source_lang, source_lang),
                 'targetLanguage': translation_service.language_names.get(target_lang, target_lang)
             })
-            
         except Exception as e:
             logger.error(f"File creation error: {str(e)}")
             return jsonify({'error': 'Error creating download file'}), 500
