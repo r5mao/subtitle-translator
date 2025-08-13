@@ -471,12 +471,11 @@
                     
                     // Show translation duration at the bottom
                     const durationDiv = document.getElementById('translationDuration');
-                    durationDiv.textContent = `Time for translation to complete: ${response.translationDuration}`;
-                    // if (response.translationDuration) {
-                    //     durationDiv.textContent = `Time for translation to complete: ${response.translationDuration}`;
-                    // } else {
-                    //     durationDiv.textContent = '';
-                    // }
+                    if (response.translationDuration) {
+                        durationDiv.textContent = `Time for translation to complete: ${response.translationDuration}`;
+                    } else {
+                        durationDiv.textContent = '';
+                    }
                     
                     downloadSection.style.display = 'block';
                     
