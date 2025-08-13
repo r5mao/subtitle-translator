@@ -175,11 +175,27 @@ class TranslationService:
     """
     def __init__(self):
         self.language_names = {
-            'en': 'English', 'es': 'Spanish', 'fr': 'French', 'de': 'German',
-            'it': 'Italian', 'pt': 'Portuguese', 'ru': 'Russian', 'zh': 'Chinese',
-            'ja': 'Japanese', 'ko': 'Korean', 'ar': 'Arabic', 'hi': 'Hindi',
-            'nl': 'Dutch', 'sv': 'Swedish', 'da': 'Danish', 'no': 'Norwegian',
-            'fi': 'Finnish', 'pl': 'Polish', 'tr': 'Turkish', 'he': 'Hebrew'
+            'en': 'English',
+            'es': 'Spanish',
+            'fr': 'French',
+            'de': 'German',
+            'it': 'Italian',
+            'pt': 'Portuguese',
+            'ru': 'Russian',
+            'zh-cn': 'Chinese (Simplified)',
+            'zh-tw': 'Chinese (Traditional)',
+            'ja': 'Japanese',
+            'ko': 'Korean',
+            'ar': 'Arabic',
+            'hi': 'Hindi',
+            'nl': 'Dutch',
+            'sv': 'Swedish',
+            'da': 'Danish',
+            'no': 'Norwegian',
+            'fi': 'Finnish',
+            'pl': 'Polish',
+            'tr': 'Turkish',
+            'he': 'Hebrew'
         }
 
 
@@ -211,6 +227,10 @@ class TranslationService:
         return output
 
     async def translate_subtitle_entries(self, entries: List[SRTEntry], source_lang: str, target_lang: str) -> List[SRTEntry]:
+        # googletrans does not expose a list_operation_max_concurrency parameter.
+        # The optimal batch size for translation is typically 50-100 lines per request.
+        # googletrans handles batching internally, but too large batches may hit rate limits or slow down.
+        # For best performance and reliability, keep batches <= 100 lines.
         translated_entries = []
         total_entries = len(entries)
         logger.info(f"Starting batch translation of {total_entries} entries from {source_lang} to {target_lang}")
@@ -221,8 +241,13 @@ class TranslationService:
             for entry in entries:
                 entry_line_counts.append(len(entry.text_lines))
                 all_lines.extend(entry.text_lines)
-            # Batch translate all lines
-            translated_lines = await self.translate_texts(all_lines, source_lang, target_lang, translator)
+            # Batch translate all lines (<=100 lines per batch)
+            batch_size = 100
+            translated_lines = []
+            for i in range(0, len(all_lines), batch_size):
+                batch = all_lines[i:i+batch_size]
+                translated_batch = await self.translate_texts(batch, source_lang, target_lang, translator)
+                translated_lines.extend(translated_batch)
             # Reconstruct entries
             idx = 0
             for entry, line_count in zip(entries, entry_line_counts):
@@ -312,8 +337,9 @@ def translate_srt():
         if srt_file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
         
-        if not srt_file.filename.lower().endswith('.srt'):
-            return jsonify({'error': 'File must be an SRT subtitle file'}), 400
+        allowed_exts = ('.srt', '.ass', '.ssa', '.sub')
+        if not srt_file.filename.lower().endswith(allowed_exts):
+            return jsonify({'error': 'File must be a subtitle file (SRT, ASS, SSA, SUB)'}), 400
         
         # Validate languages
         if source_lang == target_lang:
@@ -348,6 +374,11 @@ def translate_srt():
             logger.error(f"Error reading file: {str(e)}")
             return jsonify({'error': 'Error reading file content'}), 400
         
+
+        # Note translation start time
+        translation_start_time = datetime.now()
+        logger.info(f"Translation started at {translation_start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+
         # Parse subtitle content (auto-detect format)
         try:
             original_filename = srt_file.filename
@@ -357,7 +388,7 @@ def translate_srt():
         except ValueError as e:
             logger.error(f"Subtitle parsing error: {str(e)}")
             return jsonify({'error': f'Invalid subtitle format: {str(e)}'}), 400
-        
+
         # Translate and re-serialize
         try:
             if fmt == 'srt':
@@ -406,7 +437,8 @@ def translate_srt():
                 'downloadUrl': f'/api/download/{file_id}',
                 'filename': translated_filename,
                 'sourceLanguage': translation_service.language_names.get(source_lang, source_lang),
-                'targetLanguage': translation_service.language_names.get(target_lang, target_lang)
+                'targetLanguage': translation_service.language_names.get(target_lang, target_lang),
+                'translationStartedAt': translation_start_time.strftime('%Y-%m-%d %H:%M:%S')
             })
         except Exception as e:
             logger.error(f"File creation error: {str(e)}")
