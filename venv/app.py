@@ -391,6 +391,8 @@ def translate_srt():
 
         # Translate and re-serialize
         try:
+            # Start timing
+            translation_timer_start = datetime.now()
             if fmt == 'srt':
                 translated_entries = asyncio.run(
                     translation_service.translate_subtitle_entries([
@@ -419,6 +421,19 @@ def translate_srt():
             else:
                 raise ValueError('Unsupported subtitle format')
             logger.info(f"Translation completed for {fmt} format")
+            # End timing
+            translation_timer_end = datetime.now()
+            translation_duration = translation_timer_end - translation_timer_start
+            duration_seconds = int(translation_duration.total_seconds())
+            duration_minutes = duration_seconds // 60
+            duration_seconds = duration_seconds % 60
+
+            if duration_minutes >= 1:
+                duration_str = f"{duration_minutes} mins {duration_seconds} seconds"
+            else:
+                duration_str = f"{duration_seconds} seconds" if duration_seconds > 1 else "1 second"
+
+            logger.info(f"Translation took {duration_str}")
         except Exception as e:
             logger.error(f"Translation error: {str(e)}")
             return jsonify({'error': f'Translation failed: {str(e)}'}), 500
@@ -438,7 +453,8 @@ def translate_srt():
                 'filename': translated_filename,
                 'sourceLanguage': translation_service.language_names.get(source_lang, source_lang),
                 'targetLanguage': translation_service.language_names.get(target_lang, target_lang),
-                'translationStartedAt': translation_start_time.strftime('%Y-%m-%d %H:%M:%S')
+                'translationStartedAt': translation_start_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'translationDuration': duration_str
             })
         except Exception as e:
             logger.error(f"File creation error: {str(e)}")

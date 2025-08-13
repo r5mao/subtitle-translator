@@ -358,6 +358,7 @@
             <a href="#" class="download-btn" id="downloadBtn" download>
                 📥 Download Translated SRT
             </a>
+            <div id="translationDuration" style="margin-top:20px; color:#555; font-size:1.1em;"></div>
         </div>
     </div>
 
@@ -468,6 +469,15 @@
                     const newFileName = originalFileName.replace(/\.(srt|ass|ssa|sub)$/i, `_google-trans_${targetLang}.$1`);
                     downloadBtn.download = newFileName;
                     
+                    // Show translation duration at the bottom
+                    const durationDiv = document.getElementById('translationDuration');
+                    durationDiv.textContent = `Time for translation to complete: ${response.translationDuration}`;
+                    // if (response.translationDuration) {
+                    //     durationDiv.textContent = `Time for translation to complete: ${response.translationDuration}`;
+                    // } else {
+                    //     durationDiv.textContent = '';
+                    // }
+                    
                     downloadSection.style.display = 'block';
                     
                     // Smooth scroll to download section
@@ -513,6 +523,8 @@
                     return { success: false, error: json.error || 'Translation failed' };
                 }
 
+                const translationDuration = json.translationDuration;
+
                 // Fetch the actual SRT file content from the downloadUrl
                 const srtResponse = await fetch('http://localhost:5000' + json.downloadUrl);
                 if (!srtResponse.ok) {
@@ -521,6 +533,7 @@
                 const translatedContent = await srtResponse.text();
                 return {
                     success: true,
+                    translationDuration: translationDuration,
                     translatedContent
                 };
             } catch (err) {
