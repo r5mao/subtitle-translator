@@ -418,7 +418,7 @@
         // Form submission and translation logic
         document.getElementById('translationForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            
+
             const formData = new FormData(this);
             const translateBtn = document.getElementById('translateBtn');
             const loadingSpinner = document.getElementById('loadingSpinner');
@@ -432,7 +432,7 @@
             errorMessage.style.display = 'none';
             downloadSection.style.display = 'none';
             progressBar.style.display = 'block';
-            progressFill.style.width = '10%';
+            progressFill.style.width = '0%';
 
             // Show loading state
             translateBtn.disabled = true;
@@ -440,50 +440,73 @@
             btnText.textContent = 'Translating...';
 
             try {
-                // Simulate translation progress
-                let progress = 10;
-                const progressInterval = setInterval(() => {
-                    progress += Math.random() * 20;
-                    if (progress > 90) progress = 90;
-                    progressFill.style.width = progress + '%';
-                }, 500);
+                // Call backend to start translation and get taskId
+                const response = await fetch('http://localhost:5000/api/translate', {
+                    method: 'POST',
+                    body: formData
+                });
 
-                // Here you would make the actual API call to your Python backend
-                // For demo purposes, we'll simulate the translation process
-                const response = await simulateTranslation(formData);
-                
-                clearInterval(progressInterval);
-                progressFill.style.width = '100%';
-
-                if (response.success) {
-                    // Create download link with translated content
-                    const blob = new Blob([response.translatedContent], { type: 'text/plain' });
-                    const url = URL.createObjectURL(blob);
-                    
-                    const downloadBtn = document.getElementById('downloadBtn');
-                    downloadBtn.href = url;
-                    
-                    const originalFileName = formData.get('srtFile').name;
-                    const targetLang = formData.get('targetLanguage');
-                    // Replace extension with _<lang>.<ext> for any supported type
-                    const newFileName = originalFileName.replace(/\.(srt|ass|ssa|sub)$/i, `_google-trans_${targetLang}.$1`);
-                    downloadBtn.download = newFileName;
-                    
-                    // Show translation duration at the bottom
-                    const durationDiv = document.getElementById('translationDuration');
-                    if (response.translationDuration) {
-                        durationDiv.textContent = `Time for translation to complete: ${response.translationDuration}`;
-                    } else {
-                        durationDiv.textContent = '';
-                    }
-                    
-                    downloadSection.style.display = 'block';
-                    
-                    // Smooth scroll to download section
-                    downloadSection.scrollIntoView({ behavior: 'smooth' });
-                } else {
-                    throw new Error(response.error || 'Translation failed');
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(errorText || 'Server error');
                 }
+
+                const json = await response.json();
+                if (!json.success || !json.taskId || !json.downloadUrl) {
+                    throw new Error(json.error || 'Translation failed');
+                }
+
+                const taskId = json.taskId;
+                const downloadUrl = json.downloadUrl;
+                const translationDuration = json.translationDuration;
+
+                // Listen for progress updates via SSE
+                await new Promise((resolve, reject) => {
+                    let completed = false;
+                    const evtSource = new EventSource(`http://localhost:5000/api/translate/progress/${taskId}`);
+                    evtSource.onmessage = function(event) {
+                        let progress = parseInt(event.data);
+                        if (isNaN(progress)) progress = 0;
+                        progressFill.style.width = progress + '%';
+                        if (progress >= 100 && !completed) {
+                            completed = true;
+                            evtSource.close();
+                            resolve();
+                        }
+                    };
+                    evtSource.onerror = function(err) {
+                        evtSource.close();
+                        reject(new Error('Lost connection to progress server.'));
+                    };
+                });
+
+                // Fetch the translated file content
+                const srtResponse = await fetch('http://localhost:5000' + downloadUrl);
+                if (!srtResponse.ok) {
+                    throw new Error('Failed to download translated subtitle file');
+                }
+                const translatedContent = await srtResponse.text();
+
+                // Create download link with translated content
+                const blob = new Blob([translatedContent], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const downloadBtn = document.getElementById('downloadBtn');
+                downloadBtn.href = url;
+                const originalFileName = formData.get('srtFile').name;
+                const targetLang = formData.get('targetLanguage');
+                const newFileName = originalFileName.replace(/\.(srt|ass|ssa|sub)$/i, `_${targetLang}.$1`);
+                downloadBtn.download = newFileName;
+
+                // Show translation duration at the bottom
+                const durationDiv = document.getElementById('translationDuration');
+                if (translationDuration) {
+                    durationDiv.textContent = `Time for translation to complete: ${translationDuration}`;
+                } else {
+                    durationDiv.textContent = '';
+                }
+
+                downloadSection.style.display = 'block';
+                downloadSection.scrollIntoView({ behavior: 'smooth' });
 
             } catch (error) {
                 console.error('Translation error:', error);
@@ -495,7 +518,6 @@
                 translateBtn.disabled = false;
                 loadingSpinner.style.display = 'none';
                 btnText.textContent = 'Translate Subtitles';
-                
                 setTimeout(() => {
                     progressBar.style.display = 'none';
                     progressFill.style.width = '0%';
