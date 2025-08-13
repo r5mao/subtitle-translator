@@ -370,21 +370,21 @@ def translate_srt():
                     {'sequence_number': e.sequence_number, 'start_time': e.start_time, 'end_time': e.end_time, 'text_lines': e.text_lines}
                     for e in translated_entries
                 ])
-                translated_filename = f"{base_name}_{target_lang}.srt"
+                translated_filename = f"{base_name}_google_trans_{target_lang}.srt"
             elif fmt == 'ass':
                 texts = [d['text'] for d in parsed['dialogues']]
                 translated_texts = asyncio.run(
                     translation_service.translate_texts(texts, source_lang, target_lang, Translator())
                 )
                 translated_content = SubtitleParser.to_ass(parsed, translated_texts)
-                translated_filename = f"{base_name}_{target_lang}.ass"
+                translated_filename = f"{base_name}_google_trans_{target_lang}.ass"
             elif fmt == 'sub':
                 texts = [d['text'] for d in parsed['subs']]
                 translated_texts = asyncio.run(
                     translation_service.translate_texts(texts, source_lang, target_lang, Translator())
                 )
                 translated_content = SubtitleParser.to_sub(parsed, translated_texts)
-                translated_filename = f"{base_name}_{target_lang}.sub"
+                translated_filename = f"{base_name}_google_trans_{target_lang}.sub"
             else:
                 raise ValueError('Unsupported subtitle format')
             logger.info(f"Translation completed for {fmt} format")
