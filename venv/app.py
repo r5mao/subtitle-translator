@@ -424,15 +424,16 @@ def translate_srt():
             # End timing
             translation_timer_end = datetime.now()
             translation_duration = translation_timer_end - translation_timer_start
-            duration_seconds = int(translation_duration.total_seconds())
-            duration_minutes = duration_seconds // 60
-            duration_seconds = duration_seconds % 60
-
-            if duration_minutes >= 1:
-                duration_str = f"{duration_minutes} mins {duration_seconds} seconds"
+            total_ms = int(translation_duration.total_seconds() * 1000)
+            duration_minutes = total_ms // 60000
+            duration_seconds = (total_ms % 60000) // 1000
+            duration_ms = total_ms % 1000
+            if duration_minutes:
+                duration_str = f"{duration_minutes} mins {duration_seconds} seconds {duration_ms} ms"
+            elif duration_seconds:
+                duration_str = f"{duration_seconds} seconds {duration_ms} ms"
             else:
-                duration_str = f"{duration_seconds} seconds" if duration_seconds > 1 else "1 second"
-
+                duration_str = f"{duration_ms} ms"
             logger.info(f"Translation took {duration_str}")
         except Exception as e:
             logger.error(f"Translation error: {str(e)}")
