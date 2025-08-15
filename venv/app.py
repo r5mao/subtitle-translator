@@ -18,7 +18,7 @@ Key Features:
 - Comprehensive error handling and logging
 """
 
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, stream_with_context, Response
 from flask_cors import CORS
 import asyncio
 from googletrans import Translator
@@ -309,6 +309,22 @@ def get_supported_languages():
         'count': len(translation_service.language_names)
     })
 
+@app.route('/api/task', methods=['GET'])
+def get_task_id():
+    """
+    Returns task_id.
+    
+    Returns:
+        JSON response with task_id
+    """
+    task_id = str(uuid.uuid4())
+    logger.info(f"Get task ID: {task_id}")
+
+    return jsonify({
+        'ok': True,
+        'taskId': task_id
+    })
+
 @app.route('/api/translate', methods=['POST'])
 def translate_srt():
     """
@@ -322,9 +338,7 @@ def translate_srt():
     Returns:
         JSON response with download URL or error message
     """
-    # Generate a unique task ID for this translation
-    task_id = str(uuid.uuid4())
-    translation_progress[task_id] = {'progress': 0, 'status': 'started'}
+
     # Validate request
     if 'srtFile' not in request.files:
         return jsonify({'error': 'No SRT file provided'}), 400
@@ -333,6 +347,9 @@ def translate_srt():
     srt_file = request.files['srtFile']
     source_lang = request.form['sourceLanguage']
     target_lang = request.form['targetLanguage']
+
+    task_id = request.form['taskId']
+    translation_progress[task_id] = {'progress': 0, 'status': 'started'}
     # Validate file
     if srt_file.filename == '':
         return jsonify({'error': 'No file selected'}), 400
@@ -485,8 +502,8 @@ def translate_srt():
             'sourceLanguage': translation_service.language_names.get(source_lang, source_lang),
             'targetLanguage': translation_service.language_names.get(target_lang, target_lang),
             'translationStartedAt': translation_start_time.strftime('%Y-%m-%d %H:%M:%S'),
-            'translationDuration': duration_str,
-            'taskId': task_id
+            'translationDuration': duration_str
+            # 'taskId': task_id
         })
     except Exception as e:
         logger.error(f"Translation error: {str(e)}")
@@ -555,18 +572,26 @@ def download_file(file_id):
 
 @app.route('/api/translate/progress/<task_id>')
 def sse_translation_progress(task_id):
+    import time
+    @stream_with_context
     def event_stream():
         last_progress = -1
-        import time
         while True:
             progress = translation_progress.get(task_id, {}).get('progress', 0)
             if progress != last_progress:
                 yield f"data: {progress}\n\n"
                 last_progress = progress
             if progress >= 100:
-                return
+                break
             time.sleep(0.5)
-    return app.response_class(event_stream(), mimetype='text/event-stream')
+    # Add CORS and disable caching for SSE
+    headers = {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Access-Control-Allow-Origin': '*',
+        'X-Accel-Buffering': 'no'  # For nginx, disables response buffering
+    }
+    return Response(event_stream(), headers=headers)
 
 @app.errorhandler(413)
 def file_too_large(error):
@@ -609,6 +634,7 @@ Usage:
 API Endpoints:
 - GET /api/health - Health check
 - GET /api/languages - Get supported languages
+- GET /api/task - Get task ID
 - POST /api/translate - Translate SRT file
 - GET /api/download/<file_id> - Download translated file
 
