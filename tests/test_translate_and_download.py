@@ -71,3 +71,102 @@ def test_translate_srt_dual(client, patch_translator):
     # Also check the second line presence
     assert 'How are you?' in content
     assert 'ZH:How are you?' in content
+
+
+# ---- ASS/SUB helpers and tests ----
+
+def make_ass():
+    content = """[Script Info]
+Title: Test
+ScriptType: v4.00+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Hello
+Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,How are you?
+"""
+    return content.encode("utf-8")
+
+
+def make_sub():
+    content = """{0}{25}Hello
+{26}{50}How are you?
+"""
+    return content.encode("utf-8")
+
+
+def post_translate_file(client, filename: str, payload: bytes, dual: bool = False):
+    data = {
+        'sourceLanguage': 'en',
+        'targetLanguage': 'zh-cn',
+        'dualLanguage': 'true' if dual else 'false',
+        'taskId': str(uuid.uuid4()),
+    }
+    return client.post(
+        '/api/translate',
+        data={**data, 'srtFile': (io.BytesIO(payload), filename)},
+        content_type='multipart/form-data',
+        follow_redirects=True,
+    )
+
+
+def test_translate_ass_non_dual(client, patch_translator):
+    resp = post_translate_file(client, 'sample.ass', make_ass(), dual=False)
+    assert resp.status_code == 200
+    j = resp.get_json()
+    assert j['success'] is True
+    assert j['filename'].endswith('_zh-cn.ass')
+
+    dl = client.get(j['downloadUrl'])
+    assert dl.status_code == 200
+    content = dl.data.decode('utf-8')
+    assert 'ZH:Hello' in content
+    assert 'ZH:How are you?' in content
+    cd = dl.headers.get('Content-Disposition', '')
+    assert j['filename'] in cd
+
+
+def test_translate_ass_dual(client, patch_translator):
+    resp = post_translate_file(client, 'sample.ass', make_ass(), dual=True)
+    assert resp.status_code == 200
+    j = resp.get_json()
+    assert j['success'] is True
+    assert j['filename'].endswith('_zh-cn_dual.ass')
+
+    dl = client.get(j['downloadUrl'])
+    assert dl.status_code == 200
+    content = dl.data.decode('utf-8')
+    # ASS dual uses \N line break between original and translation
+    assert 'Hello\\NZH:Hello' in content
+    assert 'How are you?\\NZH:How are you?' in content
+
+
+def test_translate_sub_non_dual(client, patch_translator):
+    resp = post_translate_file(client, 'sample.sub', make_sub(), dual=False)
+    assert resp.status_code == 200
+    j = resp.get_json()
+    assert j['success'] is True
+    assert j['filename'].endswith('_zh-cn.sub')
+
+    dl = client.get(j['downloadUrl'])
+    assert dl.status_code == 200
+    content = dl.data.decode('utf-8')
+    assert 'ZH:Hello' in content
+    assert 'ZH:How are you?' in content
+
+
+def test_translate_sub_dual(client, patch_translator):
+    resp = post_translate_file(client, 'sample.sub', make_sub(), dual=True)
+    assert resp.status_code == 200
+    j = resp.get_json()
+    assert j['success'] is True
+    assert j['filename'].endswith('_zh-cn_dual.sub')
+
+    dl = client.get(j['downloadUrl'])
+    assert dl.status_code == 200
+    content = dl.data.decode('utf-8')
+    # SUB dual uses | between original and translation
+    assert 'Hello|ZH:Hello' in content
+    assert 'How are you?|ZH:How are you?' in content
