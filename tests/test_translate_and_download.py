@@ -47,8 +47,9 @@ def test_translate_srt_non_dual(client, patch_translator):
     dl = client.get(j['downloadUrl'])
     assert dl.status_code == 200
     content = dl.data.decode('utf-8')
-    # Our fake translator prefixes with ZH:
-    assert 'ZH:' in content
+    # Our fake translator maps known phrases to Chinese for determinism
+    assert '你好，世界' in content
+    assert '你好吗？' in content
     # Check header contains the server filename
     cd = dl.headers.get('Content-Disposition', '')
     assert j['filename'] in cd
@@ -67,10 +68,10 @@ def test_translate_srt_dual(client, patch_translator):
     content = dl.data.decode('utf-8')
     # Should include both original and translated lines
     assert 'Hello world' in content
-    assert 'ZH:Hello world' in content
+    assert '你好，世界' in content
     # Also check the second line presence
     assert 'How are you?' in content
-    assert 'ZH:How are you?' in content
+    assert '你好吗？' in content
 
 
 # ---- ASS/SUB helpers and tests ----
@@ -122,8 +123,8 @@ def test_translate_ass_non_dual(client, patch_translator):
     dl = client.get(j['downloadUrl'])
     assert dl.status_code == 200
     content = dl.data.decode('utf-8')
-    assert 'ZH:Hello' in content
-    assert 'ZH:How are you?' in content
+    assert '你好' in content
+    assert '你好吗？' in content
     cd = dl.headers.get('Content-Disposition', '')
     assert j['filename'] in cd
 
@@ -139,8 +140,8 @@ def test_translate_ass_dual(client, patch_translator):
     assert dl.status_code == 200
     content = dl.data.decode('utf-8')
     # ASS dual uses \N line break between original and translation
-    assert 'Hello\\NZH:Hello' in content
-    assert 'How are you?\\NZH:How are you?' in content
+    assert 'Hello\\N你好' in content
+    assert 'How are you?\\N你好吗？' in content
 
 
 def test_translate_sub_non_dual(client, patch_translator):
@@ -153,8 +154,8 @@ def test_translate_sub_non_dual(client, patch_translator):
     dl = client.get(j['downloadUrl'])
     assert dl.status_code == 200
     content = dl.data.decode('utf-8')
-    assert 'ZH:Hello' in content
-    assert 'ZH:How are you?' in content
+    assert '你好' in content
+    assert '你好吗？' in content
 
 
 def test_translate_sub_dual(client, patch_translator):
@@ -168,5 +169,5 @@ def test_translate_sub_dual(client, patch_translator):
     assert dl.status_code == 200
     content = dl.data.decode('utf-8')
     # SUB dual uses | between original and translation
-    assert 'Hello|ZH:Hello' in content
-    assert 'How are you?|ZH:How are you?' in content
+    assert 'Hello|你好' in content
+    assert 'How are you?|你好吗？' in content

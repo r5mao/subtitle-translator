@@ -29,11 +29,16 @@ def client(app):
 @pytest.fixture()
 def patch_translator(monkeypatch, backend_module):
     async def fake_translate_texts(texts, source_lang, target_lang, translator):
-        # Preserve blanks; prefix non-empty lines for easy assertions
+        # Deterministic mapping to real Chinese for known phrases; fallback keeps old 'ZH:' prefix
+        mapping = {
+            "Hello world": "你好，世界",
+            "How are you?": "你好吗？",
+            "Hello": "你好",
+        }
         output = []
         for t in texts:
             if t.strip():
-                output.append(f"ZH:{t}")
+                output.append(mapping.get(t, f"ZH:{t}"))
             else:
                 output.append(t)
         return output
