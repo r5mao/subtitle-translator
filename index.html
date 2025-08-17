@@ -342,6 +342,13 @@
                 </select>
             </div>
 
+            <div class="form-group">
+                <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+                    <input type="checkbox" id="dualLanguage" name="dualLanguage" style="width:18px; height:18px; cursor:pointer;" value="true"/>
+                    Show both original (top) and translation (bottom) subtitles
+                </label>
+            </div>
+
             <div class="error-message" id="errorMessage"></div>
             <div class="progress-bar" id="progressBar">
                 <div class="progress-fill" id="progressFill"></div>
@@ -429,6 +436,7 @@
             const progressBar = document.getElementById('progressBar');
             const progressFill = document.getElementById('progressFill');
             const progressPercent = document.getElementById('progressPercent');
+            const dualLanguage = document.getElementById('dualLanguage');
 
             // Reset UI state
             errorMessage.style.display = 'none';
@@ -454,6 +462,7 @@
                 const taskJson = await taskResponse.json();
                 const taskId = taskJson.taskId;
                 formData.append('taskId', taskId);
+                formData.set('dualLanguage', dualLanguage.checked ? 'true' : 'false');
 
                 // Start listening for progress updates via SSE BEFORE starting the translation POST
                 const evtSource = new EventSource(`http://localhost:5000/api/translate/progress/${taskId}`);

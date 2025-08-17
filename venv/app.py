@@ -347,7 +347,7 @@ def translate_srt():
     srt_file = request.files['srtFile']
     source_lang = request.form['sourceLanguage']
     target_lang = request.form['targetLanguage']
-
+    dual_language = request.form.get('dualLanguage', 'false').strip().lower() in ('true', 'on', '1', 'yes')
     task_id = request.form['taskId']
     translation_progress[task_id] = {'progress': 0, 'status': 'started'}
     # Validate file
@@ -434,10 +434,23 @@ def translate_srt():
             translated_entries = srt_progress([
                 SRTEntry(e['sequence_number'], e['start_time'], e['end_time'], e['text_lines']) for e in parsed
             ], source_lang, target_lang)
-            translated_content = SubtitleParser.to_srt([
-                {'sequence_number': e.sequence_number, 'start_time': e.start_time, 'end_time': e.end_time, 'text_lines': e.text_lines}
-                for e in translated_entries
-            ])
+            # If dual_language, include original lines above translated lines per entry
+            if dual_language:
+                output_entries = []
+                for orig_dict, trans_entry in zip(parsed, translated_entries):
+                    combined_lines = orig_dict['text_lines'] + trans_entry.text_lines
+                    output_entries.append({
+                        'sequence_number': trans_entry.sequence_number,
+                        'start_time': trans_entry.start_time,
+                        'end_time': trans_entry.end_time,
+                        'text_lines': combined_lines
+                    })
+                translated_content = SubtitleParser.to_srt(output_entries)
+            else:
+                translated_content = SubtitleParser.to_srt([
+                    {'sequence_number': e.sequence_number, 'start_time': e.start_time, 'end_time': e.end_time, 'text_lines': e.text_lines}
+                    for e in translated_entries
+                ])
             translated_filename = f"{base_name}_{target_lang}.srt"
         elif fmt == 'ass':
             texts = [d['text'] for d in parsed['dialogues']]
@@ -452,7 +465,11 @@ def translate_srt():
                         translated_texts.extend(translated_batch)
                         update_progress(min(i+batch_size, total_lines), total_lines)
             asyncio.run(do_translate_ass())
-            translated_content = SubtitleParser.to_ass(parsed, translated_texts)
+            if dual_language:
+                combined_texts = [f"{orig}\\N{tran}" for orig, tran in zip(texts, translated_texts)]
+                translated_content = SubtitleParser.to_ass(parsed, combined_texts)
+            else:
+                translated_content = SubtitleParser.to_ass(parsed, translated_texts)
             translated_filename = f"{base_name}_{target_lang}.ass"
         elif fmt == 'sub':
             texts = [d['text'] for d in parsed['subs']]
@@ -467,7 +484,11 @@ def translate_srt():
                         translated_texts.extend(translated_batch)
                         update_progress(min(i+batch_size, total_lines), total_lines)
             asyncio.run(do_translate_sub())
-            translated_content = SubtitleParser.to_sub(parsed, translated_texts)
+            if dual_language:
+                combined_texts = [f"{orig}|{tran}" for orig, tran in zip(texts, translated_texts)]
+                translated_content = SubtitleParser.to_sub(parsed, combined_texts)
+            else:
+                translated_content = SubtitleParser.to_sub(parsed, translated_texts)
             translated_filename = f"{base_name}_{target_lang}.sub"
         else:
             raise ValueError('Unsupported subtitle format')
