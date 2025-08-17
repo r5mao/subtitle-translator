@@ -63,12 +63,23 @@ Now you can open [http://localhost:8080/index.html](http://localhost:8080/index.
 - `POST /api/translate` — Translate SRT file (multipart form: `srtFile`, `sourceLanguage`, `targetLanguage`)
 - `GET /api/download/<file_id>` — Download translated SRT file
 
+## Automated Tests
+From the `srt-translator` directory, run:
+```
+python -q
+```
+
 ## Project Structure
 ```
 srt-translator/
 ├── index.html         # Frontend web UI
 ├── venv/app.py        # Flask backend
 ├── requirements.txt   # (optional) Python dependencies
+├── tests/             # Unit tests
+├────── conftest.py    # pytest configuration
+├────── test_app.py    # Flask app tests
+├────── test_api.py    # API tests
+├────── test_utils.py  # Utility functions tests
 ```
 
 ## Notes
