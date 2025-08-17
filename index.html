@@ -346,6 +346,7 @@
             <div class="progress-bar" id="progressBar">
                 <div class="progress-fill" id="progressFill"></div>
             </div>
+            <div id="progressPercent" style="display:none; text-align:right; margin:-14px 0 20px 0; font-size:0.95em; color:#555; font-weight:600;">0%</div>
 
             <button type="submit" class="translate-btn" id="translateBtn">
                 <span class="loading-spinner" id="loadingSpinner"></span>
@@ -427,12 +428,15 @@
             const downloadSection = document.getElementById('downloadSection');
             const progressBar = document.getElementById('progressBar');
             const progressFill = document.getElementById('progressFill');
+            const progressPercent = document.getElementById('progressPercent');
 
             // Reset UI state
             errorMessage.style.display = 'none';
             downloadSection.style.display = 'none';
             progressBar.style.display = 'block';
             progressFill.style.width = '0%';
+            progressPercent.style.display = 'block';
+            progressPercent.textContent = '0%';
 
             // Show loading state
             translateBtn.disabled = true;
@@ -462,6 +466,7 @@
                         if (isNaN(progress)) progress = 0;
                         progressFill.style.width = progress + '%';
                         progressFill.setAttribute('aria-valuenow', progress);
+                        progressPercent.textContent = progress + '%';
                         if (progress >= 100 && !completed) {
                             completed = true;
                             evtSource.close();
@@ -550,6 +555,8 @@
                 setTimeout(() => {
                     progressBar.style.display = 'none';
                     progressFill.style.width = '0%';
+                    progressPercent.style.display = 'none';
+                    progressPercent.textContent = '0%';
                 }, 1000);
             }
         });
