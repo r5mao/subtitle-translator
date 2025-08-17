@@ -1,0 +1,19 @@
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+
+# Test/coverage caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
