@@ -451,31 +451,12 @@
                 const taskId = taskJson.taskId;
                 formData.append('taskId', taskId);
 
-                // Call backend to start translation and get taskId
-                const response = await fetch('http://localhost:5000/api/translate', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(errorText || 'Server error');
-                }
-
-                const json = await response.json();
-                if (!json.success || !json.downloadUrl) {
-                    throw new Error(json.error || 'Translation failed');
-                }
-
-                const downloadUrl = json.downloadUrl;
-                const translationDuration = json.translationDuration;
-
-                // Listen for progress updates via SSE
-                await new Promise((resolve, reject) => {
+                // Start listening for progress updates via SSE BEFORE starting the translation POST
+                const evtSource = new EventSource(`http://localhost:5000/api/translate/progress/${taskId}`);
+                const ssePromise = new Promise((resolve, reject) => {
                     let completed = false;
                     progressBar.style.display = 'block';
                     progressFill.style.width = '0%';
-                    const evtSource = new EventSource(`http://localhost:5000/api/translate/progress/${taskId}`);
                     evtSource.onmessage = function(event) {
                         let progress = parseInt(event.data);
                         if (isNaN(progress)) progress = 0;
@@ -489,9 +470,40 @@
                     };
                     evtSource.onerror = function(err) {
                         evtSource.close();
+                        // Proceed but indicate loss of live updates
                         reject(new Error('Lost connection to progress server.'));
                     };
                 });
+
+                // Kick off the translation POST concurrently (do not await yet)
+                const translatePromise = (async () => {
+                    const response = await fetch('http://localhost:5000/api/translate', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        throw new Error(errorText || 'Server error');
+                    }
+                    const json = await response.json();
+                    if (!json.success || !json.downloadUrl) {
+                        throw new Error(json.error || 'Translation failed');
+                    }
+                    return json;
+                })();
+
+                // Wait for progress to reach 100% (SSE) while POST runs
+                try {
+                    await ssePromise;
+                } catch (sseErr) {
+                    // Show a warning but continue waiting for the translate response
+                    console.warn(sseErr?.message || sseErr);
+                }
+
+                // Now wait for the translate response and proceed
+                const json = await translatePromise;
+                const downloadUrl = json.downloadUrl;
+                const translationDuration = json.translationDuration;
 
                 // Fetch the translated file content
                 const srtResponse = await fetch('http://localhost:5000' + downloadUrl);
