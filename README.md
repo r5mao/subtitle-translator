@@ -12,6 +12,8 @@ A web application for translating SRT subtitle files between languages using Goo
 - CORS support for frontend-backend integration
 - Error handling and logging
 
+<img width="2549" height="1328" alt="image" src="https://github.com/user-attachments/assets/70f173d9-b681-4f9a-8e7f-ae934e24b0a4" />
+
 ## Requirements
 - Python 3.8+
 - Flask
