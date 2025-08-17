@@ -518,6 +518,7 @@
                 const json = await translatePromise;
                 const downloadUrl = json.downloadUrl;
                 const translationDuration = json.translationDuration;
+                const serverFilename = json.filename;
 
                 // Fetch the translated file content
                 const srtResponse = await fetch('http://localhost:5000' + downloadUrl);
@@ -533,10 +534,15 @@
                 downloadBtn.href = url;
                 const originalFileName = formData.get('srtFile').name;
                 const targetLang = formData.get('targetLanguage');
-                // Use _<lang> before extension, fallback if no match
-                let newFileName = originalFileName.replace(/\.(srt|ass|ssa|sub)$/i, `_GoogleTrans_${targetLang}.$1`);
-                if (newFileName === originalFileName) {
-                    newFileName = originalFileName + `_${targetLang}`;
+                // Prefer server-provided filename (respects dual mode and format)
+                let newFileName = serverFilename;
+                if (!newFileName) {
+                    // Fallback: build client-side, append _dual when enabled
+                    const dualSuffix = (typeof dualLanguage !== 'undefined' && dualLanguage?.checked) ? '_dual' : '';
+                    newFileName = originalFileName.replace(/\.(srt|ass|ssa|sub)$/i, `_GoogleTrans_${targetLang}${dualSuffix}.$1`);
+                    if (newFileName === originalFileName) {
+                        newFileName = originalFileName + `_GoogleTrans_${targetLang}${dualSuffix}`;
+                    }
                 }
                 downloadBtn.download = newFileName;
 

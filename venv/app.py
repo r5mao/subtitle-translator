@@ -434,7 +434,7 @@ def translate_srt():
             translated_entries = srt_progress([
                 SRTEntry(e['sequence_number'], e['start_time'], e['end_time'], e['text_lines']) for e in parsed
             ], source_lang, target_lang)
-            # If dual_language, include original lines above translated lines per entry
+            # If dual-language, include original lines above translated lines per entry
             if dual_language:
                 output_entries = []
                 for orig_dict, trans_entry in zip(parsed, translated_entries):
@@ -451,7 +451,7 @@ def translate_srt():
                     {'sequence_number': e.sequence_number, 'start_time': e.start_time, 'end_time': e.end_time, 'text_lines': e.text_lines}
                     for e in translated_entries
                 ])
-            translated_filename = f"{base_name}_{target_lang}.srt"
+            translated_filename = f"{base_name}_{target_lang}{'_dual' if dual_language else ''}.srt"
         elif fmt == 'ass':
             texts = [d['text'] for d in parsed['dialogues']]
             total_lines = len(texts)
@@ -470,7 +470,7 @@ def translate_srt():
                 translated_content = SubtitleParser.to_ass(parsed, combined_texts)
             else:
                 translated_content = SubtitleParser.to_ass(parsed, translated_texts)
-            translated_filename = f"{base_name}_{target_lang}.ass"
+            translated_filename = f"{base_name}_{target_lang}{'_dual' if dual_language else ''}.ass"
         elif fmt == 'sub':
             texts = [d['text'] for d in parsed['subs']]
             total_lines = len(texts)
@@ -489,7 +489,7 @@ def translate_srt():
                 translated_content = SubtitleParser.to_sub(parsed, combined_texts)
             else:
                 translated_content = SubtitleParser.to_sub(parsed, translated_texts)
-            translated_filename = f"{base_name}_{target_lang}.sub"
+            translated_filename = f"{base_name}_{target_lang}{'_dual' if dual_language else ''}.sub"
         else:
             raise ValueError('Unsupported subtitle format')
         translation_progress[task_id]['progress'] = 100
