@@ -2,18 +2,42 @@ import importlib.util
 from pathlib import Path
 import pytest
 
-# Path to backend file (avoid importing stdlib 'venv' module by loading from file)
-BACKEND_PATH = Path(__file__).resolve().parents[1] / "venv" / "app.py"
+# Import the app factory from the new package structure
+try:
+    from srt_translator import create_app
+    USE_NEW_STRUCTURE = True
+except ImportError:
+    # Fallback to legacy structure if new package not available
+    USE_NEW_STRUCTURE = False
+    BACKEND_PATH = Path(__file__).resolve().parents[1] / "venv" / "app.py"
 
 
 @pytest.fixture(scope="session")
 def backend_module():
-    spec = importlib.util.spec_from_file_location("srt_backend_app", str(BACKEND_PATH))
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)  # type: ignore
-    module.app.config["TESTING"] = True
-    return module
+    if USE_NEW_STRUCTURE:
+        # Load the legacy module to get translation_service
+        backend_path = Path(__file__).resolve().parents[1] / "venv" / "app.py"
+        spec = importlib.util.spec_from_file_location("legacy_backend", str(backend_path))
+        legacy_module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(legacy_module)
+        
+        # Create a mock module object for compatibility
+        class MockModule:
+            def __init__(self):
+                self.app = create_app()
+                self.app.config["TESTING"] = True
+                # Get translation_service from the legacy module
+                self.translation_service = getattr(legacy_module, 'translation_service', None)
+        return MockModule()
+    else:
+        # Legacy path loading
+        spec = importlib.util.spec_from_file_location("srt_backend_app", str(BACKEND_PATH))
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)  # type: ignore
+        module.app.config["TESTING"] = True
+        return module
 
 
 @pytest.fixture()
