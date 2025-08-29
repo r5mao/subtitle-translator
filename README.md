@@ -32,7 +32,7 @@ A web application for translating SRT subtitle files between languages using Goo
    ```
 3. Install dependencies:
    ```
-   pip install flask flask-cors googletrans==4.0.2
+   pip install flask flask-cors googletrans==4.0.2 pytest
    ```
 
 
@@ -66,20 +66,30 @@ Now you can open [http://localhost:8080/index.html](http://localhost:8080/index.
 ## Automated Tests
 From the `srt-translator` directory, run:
 ```
-python -q
+python -m pytest -q
 ```
+
+If you see "pytest is not recognized", install it into your current environment and try again:
+```
+python -m pip install -U pytest
+python -m pytest -q
+```
+
+Notes for tests:
+- You do NOT need to start the Flask app or a static file server to run tests. The tests use Flask's in-process test client.
 
 ## Project Structure
 ```
 srt-translator/
-├── index.html         # Frontend web UI
-├── venv/app.py        # Flask backend
-├── requirements.txt   # (optional) Python dependencies
-├── tests/             # Unit tests
-├────── conftest.py    # pytest configuration
-├────── test_app.py    # Flask app tests
-├────── test_api.py    # API tests
-├────── test_utils.py  # Utility functions tests
+├── index.html                       # Frontend web UI
+├── venv/
+│   └── app.py                       # Flask backend
+├── requirements.txt                 # (optional) Python dependencies
+└── tests/                           # Unit tests
+    ├── conftest.py                  # pytest configuration
+    ├── test_errors.py               # Error handling tests
+    ├── test_health_and_languages.py # Health and languages endpoints tests
+    └── test_translate_and_download.py # Translate and download flow tests
 ```
 
 ## Notes
