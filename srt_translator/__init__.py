@@ -1,18 +1,25 @@
 """SRT Translator package."""
 
 from flask import Flask
-import importlib.util
-from pathlib import Path
+from .api import api_bp
 
 
 def create_app():
-    """Application factory pattern."""
-    # Load the legacy app from venv/app.py for incremental refactoring
-    backend_path = Path(__file__).resolve().parents[1] / "venv" / "app.py"
-    spec = importlib.util.spec_from_file_location("legacy_app", str(backend_path))
-    legacy_module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(legacy_module)
+    """Create and configure the Flask application."""
+    app = Flask(__name__)
     
-    # Return the legacy app directly for now to maintain compatibility
-    # This allows for incremental refactoring without breaking existing functionality
-    return legacy_module.app
+    # Load configuration
+    app.config.from_object('srt_translator.config.Config')
+    
+    # Initialize extensions
+    from .services import translation
+    
+    # Register blueprints
+    app.register_blueprint(api_bp, url_prefix='/api')
+    
+    # Add a simple route for the root URL
+    @app.route('/')
+    def index():
+        return {'app': 'SRT Translator API', 'version': '1.0.0'}
+    
+    return app
