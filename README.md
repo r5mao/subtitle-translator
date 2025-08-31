@@ -40,7 +40,7 @@ A web application for translating SRT subtitle files between languages using Goo
 
 ### 1. Start the Flask backend (API server):
 ```
-python venv/app.py
+python app.py
 ```
 The API will be available at http://localhost:5000
 
