@@ -1,6 +1,7 @@
 """SRT Translator package."""
 
 from flask import Flask, send_from_directory
+from flask_cors import CORS
 import os
 from pathlib import Path
 from .api import api_bp
@@ -17,7 +18,10 @@ def create_app():
     
     # Initialize extensions
     from .services import translation
-    
+
+    # Allow localhost:8080 to talk to localhost:5000 for development
+    CORS(app)
+
     # Register blueprints
     app.register_blueprint(api_bp, url_prefix='/api')
     

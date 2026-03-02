@@ -146,6 +146,7 @@ document.getElementById('translationForm').addEventListener('submit', async func
         const downloadUrl = json.downloadUrl;
         const translationDuration = json.translationDuration;
         const serverFilename = json.filename;
+        console.log('Download URL:', downloadUrl);
 
         // Fetch the translated file content
         const srtResponse = await fetch('http://localhost:5000' + downloadUrl);
