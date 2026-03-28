@@ -48,7 +48,7 @@ def test_translate_srt_non_dual(client, patch_translator):
     assert dl.status_code == 200
     content = dl.data.decode('utf-8')
     # Our fake translator maps known phrases to Chinese for determinism
-    assert '你好世界' in content
+    assert '你好，世界' in content
     assert '你好吗？' in content
     # Check header contains the server filename
     cd = dl.headers.get('Content-Disposition', '')
@@ -68,7 +68,7 @@ def test_translate_srt_dual(client, patch_translator):
     content = dl.data.decode('utf-8')
     # Should include both original and translated lines
     assert 'Hello world' in content
-    assert '你好世界' in content
+    assert '你好，世界' in content
     # Also check the second line presence
     assert 'How are you?' in content
     assert '你好吗？' in content
