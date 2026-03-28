@@ -16,3 +16,5 @@ def test_languages(client):
     assert "en" in langs
     assert "zh-cn" in langs
     assert langs["zh-cn"].lower().startswith("chinese")
+    assert "zh-cn-pinyin" in langs
+    assert "pinyin" in langs["zh-cn-pinyin"].lower()

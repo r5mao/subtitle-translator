@@ -15,10 +15,10 @@ How are you?
 """.strip() + "\n").encode("utf-8")
 
 
-def post_translate(client, dual=False):
+def post_translate(client, dual=False, target_lang='zh-cn'):
     data = {
         'sourceLanguage': 'en',
-        'targetLanguage': 'zh-cn',
+        'targetLanguage': target_lang,
         'dualLanguage': 'true' if dual else 'false',
         'taskId': str(uuid.uuid4()),
     }
@@ -53,6 +53,33 @@ def test_translate_srt_non_dual(client, patch_translator):
     # Check header contains the server filename
     cd = dl.headers.get('Content-Disposition', '')
     assert j['filename'] in cd
+
+
+def test_translate_srt_pinyin_non_dual(client, patch_translator):
+    resp = post_translate(client, dual=False, target_lang='zh-cn-pinyin')
+    assert resp.status_code == 200
+    j = resp.get_json()
+    assert j['success'] is True
+    assert j['filename'].endswith('_zh-cn-pinyin.srt')
+    dl = client.get(j['downloadUrl'])
+    assert dl.status_code == 200
+    content = dl.data.decode('utf-8')
+    assert '你好，世界' in content
+    assert 'nǐ' in content and 'hǎo' in content
+
+
+def test_translate_srt_pinyin_dual(client, patch_translator):
+    resp = post_translate(client, dual=True, target_lang='zh-cn-pinyin')
+    assert resp.status_code == 200
+    j = resp.get_json()
+    assert j['success'] is True
+    assert j['filename'].endswith('_zh-cn-pinyin_dual.srt')
+    dl = client.get(j['downloadUrl'])
+    assert dl.status_code == 200
+    content = dl.data.decode('utf-8')
+    assert 'Hello world' in content
+    assert '你好，世界' in content
+    assert 'nǐ' in content
 
 
 def test_translate_srt_dual(client, patch_translator):
@@ -98,10 +125,10 @@ def make_sub():
     return content.encode("utf-8")
 
 
-def post_translate_file(client, filename: str, payload: bytes, dual: bool = False):
+def post_translate_file(client, filename: str, payload: bytes, dual: bool = False, target_lang='zh-cn'):
     data = {
         'sourceLanguage': 'en',
-        'targetLanguage': 'zh-cn',
+        'targetLanguage': target_lang,
         'dualLanguage': 'true' if dual else 'false',
         'taskId': str(uuid.uuid4()),
     }
@@ -127,6 +154,18 @@ def test_translate_ass_non_dual(client, patch_translator):
     assert '你好吗？' in content
     cd = dl.headers.get('Content-Disposition', '')
     assert j['filename'] in cd
+
+
+def test_translate_ass_pinyin_dual(client, patch_translator):
+    resp = post_translate_file(client, 'sample.ass', make_ass(), dual=True, target_lang='zh-cn-pinyin')
+    assert resp.status_code == 200
+    j = resp.get_json()
+    assert j['filename'].endswith('_zh-cn-pinyin_dual.ass')
+    dl = client.get(j['downloadUrl'])
+    content = dl.data.decode('utf-8')
+    assert '{\\fs15}' in content
+    assert 'Hello\\N你好' in content
+    assert 'nǐ' in content
 
 
 def test_translate_ass_dual(client, patch_translator):

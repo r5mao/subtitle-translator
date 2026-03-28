@@ -1,12 +1,12 @@
 # SRT Subtitle Translator
 
-A web application for translating SRT subtitle files between languages using Google Translate, built with Flask and a modern HTML/JS frontend.
+A web application for translating subtitle files between languages using Google Translate, built with Flask and a vanilla HTML/JS frontend.
 
 ## Features
-- Upload SRT subtitle files and translate them to another language
+- Upload subtitle files (**SRT**, **ASS/SSA**, **SUB**) and translate them to another language
 - Preserves subtitle timing and formatting
-- Supports many major languages
-- Download translated SRT files
+- Supports many major languages (including Chinese + Pinyin target options)
+- Download translated files
 - Modern, responsive web UI
 - RESTful API endpoints
 - CORS support for frontend-backend integration
@@ -15,10 +15,8 @@ A web application for translating SRT subtitle files between languages using Goo
 <img width="2549" height="1328" alt="image" src="https://github.com/user-attachments/assets/70f173d9-b681-4f9a-8e7f-ae934e24b0a4" />
 
 ## Requirements
-- Python 3.8+
-- Flask
-- Flask-CORS
-- googletrans (4.0.2 or compatible async version)
+- Python 3.8+ (**googletrans 4.0.2** uses current `httpx` and does not need the old stdlib `cgi` module)
+- Dependencies are pinned in `requirements.txt` (Flask, Flask-CORS, **googletrans 4.0.2**, etc.)
 
 ## Installation
 1. Clone this repository or copy the project files.
@@ -32,7 +30,7 @@ A web application for translating SRT subtitle files between languages using Goo
    ```
 3. Install dependencies:
    ```
-   pip install flask flask-cors googletrans==4.0.2 pytest
+   pip install -r requirements.txt
    ```
 
 
@@ -44,27 +42,26 @@ python app.py
 ```
 The API will be available at http://localhost:5000
 
-### 2. Serve the frontend (index.html) with a static file server:
-From the `srt-translator` directory, run:
+### 2. Serve the frontend (optional static server):
+If you do not rely on Flask’s root route alone, from the **project root** run:
 ```
 python -m http.server 8080
 ```
-This will serve your frontend files at http://localhost:8080/
-
-Now you can open [http://localhost:8080/index.html](http://localhost:8080/index.html) in your browser to use the web interface.
+Then open the app (or `index.html`) as you prefer.
 
 **Note:**
-- The backend (Flask) and frontend (static server) are separate. The frontend makes API requests to the backend.
-- If you want to use a different port or path, adjust the commands and URLs accordingly.
+- For development, Flask serves `index.html` at `/` and static assets under `/static/`. You can use **http://localhost:5000/** directly.
+- If you use a separate static server on another port, the frontend is configured to call the API at `http://localhost:5000` (see `static/js/main.js`).
+- If you want a different port or host, adjust the URLs accordingly.
 
 ## API Endpoints
 - `GET /api/health` — Health check
 - `GET /api/languages` — List supported languages
-- `POST /api/translate` — Translate SRT file (multipart form: `srtFile`, `sourceLanguage`, `targetLanguage`)
-- `GET /api/download/<file_id>` — Download translated SRT file
+- `POST /api/translate` — Translate subtitle file (multipart form: `srtFile`, `sourceLanguage`, `targetLanguage`, etc.)
+- `GET /api/download/<file_id>` — Download translated file
 
 ## Automated Tests
-From the `srt-translator` directory, run:
+From the project root, run:
 ```
 python -m pytest -q
 ```
@@ -76,20 +73,21 @@ python -m pytest -q
 ```
 
 Notes for tests:
-- You do NOT need to start the Flask app or a static file server to run tests. The tests use Flask's in-process test client.
+- You do **not** need to start the Flask app or a static file server to run tests. The tests use Flask’s in-process test client.
 
 ## Project Structure
 ```
-srt-translator/
-├── index.html                       # Frontend web UI
-├── venv/
-│   └── app.py                       # Flask backend
-├── requirements.txt                 # (optional) Python dependencies
-└── tests/                           # Unit tests
-    ├── conftest.py                  # pytest configuration
-    ├── test_errors.py               # Error handling tests
-    ├── test_health_and_languages.py # Health and languages endpoints tests
-    └── test_translate_and_download.py # Translate and download flow tests
+project root/
+├── app.py                 # Run the Flask app
+├── index.html             # Frontend web UI
+├── static/                 # CSS, JS, favicon
+├── srt_translator/         # Flask app package (API, translation, parsers)
+├── requirements.txt        # Pinned Python dependencies
+└── tests/                  # Pytest suite
+    ├── conftest.py
+    ├── test_errors.py
+    ├── test_health_and_languages.py
+    └── test_translate_and_download.py
 ```
 
 ## Notes
