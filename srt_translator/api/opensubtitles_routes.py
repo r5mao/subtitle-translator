@@ -13,8 +13,11 @@ from srt_translator.services.opensubtitles_client import (
     OpenSubtitlesNotConfigured,
     flatten_subtitle_results,
     get_language_name_lookup,
+    total_count_from_response,
     total_pages_from_response,
 )
+
+_ALLOWED_PER_PAGE = frozenset({10, 25, 50, 100})
 from srt_translator.services.opensubtitles_lang import ui_lang_to_opensubtitles
 
 logger = logging.getLogger(__name__)
@@ -44,16 +47,27 @@ def register_opensubtitles_routes(api_bp):
             ui_lang = (body.get("language") or "").strip()
             os_langs = ui_lang_to_opensubtitles(ui_lang) if ui_lang else ""
             page = int(body.get("page") or 1)
+            raw_per = body.get("perPage", body.get("per_page", 25))
+            try:
+                per_page = int(raw_per)
+            except (TypeError, ValueError):
+                per_page = 25
+            if per_page not in _ALLOWED_PER_PAGE:
+                per_page = 25
             lang_lookup = get_language_name_lookup(c)
-            raw = c.search(query, languages=os_langs, page=page)
+            raw = c.search(query, languages=os_langs, page=page, per_page=per_page)
             rows = flatten_subtitle_results(raw, language_names=lang_lookup)
             tp = total_pages_from_response(raw)
+            tc = total_count_from_response(raw)
+            if tc is None:
+                tc = len(rows)
             return jsonify(
                 {
                     "results": rows,
                     "page": page,
+                    "perPage": per_page,
                     "totalPages": tp,
-                    "totalCount": len(rows),
+                    "totalCount": tc,
                 }
             )
         except OpenSubtitlesNotConfigured as e:

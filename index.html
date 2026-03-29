@@ -59,6 +59,21 @@
                         <tbody id="osResultsBody"></tbody>
                     </table>
                 </div>
+                <div id="osPager" class="os-pager" hidden>
+                    <label class="os-pager-label">Results per page
+                        <select id="osPerPageSelect" class="os-pager-select">
+                            <option value="10">10</option>
+                            <option value="25" selected>25</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </label>
+                    <div class="os-pager-nav">
+                        <button type="button" class="secondary-btn os-pager-btn" id="osPagePrev">Previous</button>
+                        <span id="osPageInfo" class="os-page-info" aria-live="polite"></span>
+                        <button type="button" class="secondary-btn os-pager-btn" id="osPageNext">Next</button>
+                    </div>
+                </div>
             </div>
 
             <div class="form-group" id="uploadPanel">
@@ -143,11 +158,22 @@
             </div>
             <div id="progressPercent" style="display:none; text-align:right; margin:-14px 0 20px 0; font-size:0.95em; color:#555; font-weight:600;">0%</div>
 
-            <button type="submit" class="translate-btn" id="translateBtn">
+            <button type="button" class="translate-btn" id="translateBtn">
                 <span class="loading-spinner" id="loadingSpinner"></span>
                 <span id="btnText">Translate Subtitles</span>
             </button>
         </form>
+
+        <dialog id="translateConfirmDialog" class="confirm-dialog">
+            <div class="confirm-dialog-inner">
+                <h3 class="confirm-dialog-title">Start translation?</h3>
+                <p id="translateConfirmSummary" class="confirm-dialog-body"></p>
+                <div class="confirm-dialog-actions">
+                    <button type="button" class="secondary-btn" id="translateConfirmCancel">Cancel</button>
+                    <button type="button" class="translate-btn confirm-dialog-confirm" id="translateConfirmOk">Confirm</button>
+                </div>
+            </div>
+        </dialog>
 
         <div class="download-section" id="downloadSection">
             <div class="success-message">Translation completed successfully! 🎉</div>

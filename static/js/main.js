@@ -86,6 +86,17 @@ const osLangChips = document.getElementById('osLangChips');
 const osResultsTable = document.getElementById('osResultsTable');
 const osResultsBody = document.getElementById('osResultsBody');
 const sourceLanguage = document.getElementById('sourceLanguage');
+const osPager = document.getElementById('osPager');
+const osPerPageSelect = document.getElementById('osPerPageSelect');
+const osPagePrev = document.getElementById('osPagePrev');
+const osPageNext = document.getElementById('osPageNext');
+const osPageInfo = document.getElementById('osPageInfo');
+const translationForm = document.getElementById('translationForm');
+const translateBtn = document.getElementById('translateBtn');
+const translateConfirmDialog = document.getElementById('translateConfirmDialog');
+const translateConfirmSummary = document.getElementById('translateConfirmSummary');
+const translateConfirmCancel = document.getElementById('translateConfirmCancel');
+const translateConfirmOk = document.getElementById('translateConfirmOk');
 
 let opensubtitlesConfigured = false;
 let rawSearchResults = [];
@@ -95,6 +106,11 @@ let fetchedLabel = '';
 /** OpenSubtitles file id for the row that is selected (highlight + toggle off). */
 let selectedOsFileId = null;
 let fetchInProgressFileId = null;
+let osLastSearchQuery = '';
+let osLastSearchLang = '';
+let osSearchPage = 1;
+let osTotalPages = null;
+let osTotalCount = null;
 
 function isSearchMode() {
     return sourceSearch.checked;
@@ -276,30 +292,81 @@ async function selectSubtitleFile(fileId, row) {
     }
 }
 
-osSearchBtn.addEventListener('click', async () => {
-    const q = osQuery.value.trim();
-    if (!q) {
-        osSearchStatus.textContent = 'Enter a title to search.';
-        return;
+function selectedOptionLabel(selectEl) {
+    const opt = selectEl.options[selectEl.selectedIndex];
+    return opt ? opt.textContent.trim() : '';
+}
+
+function effectiveTotalPages() {
+    if (osTotalPages != null && osTotalPages >= 1) {
+        return osTotalPages;
+    }
+    return 1;
+}
+
+function updateOsPagerUI() {
+    const tp = effectiveTotalPages();
+    osPagePrev.disabled = osSearchPage <= 1;
+    osPageNext.disabled = osSearchPage >= tp;
+    let info = `Page ${osSearchPage} of ${tp}`;
+    if (osTotalCount != null) {
+        info += ` (${osTotalCount} total)`;
+    }
+    osPageInfo.textContent = info;
+}
+
+function updateOsPagerVisibility() {
+    osPager.hidden = rawSearchResults.length === 0;
+    if (!osPager.hidden) {
+        updateOsPagerUI();
+    }
+}
+
+async function runOpenSubtitlesSearch(options) {
+    const refreshFromInput = options && options.refreshFromInput;
+    const resetPage = options && options.resetPage;
+    if (refreshFromInput) {
+        const q = osQuery.value.trim();
+        if (!q) {
+            osSearchStatus.textContent = 'Enter a title to search.';
+            return;
+        }
+        osLastSearchQuery = q;
+        osLastSearchLang = osAnyLanguage.checked ? '' : sourceLanguage.value;
     }
     if (!opensubtitlesConfigured) {
         osSearchStatus.textContent = 'OpenSubtitles is not configured on this server.';
         return;
     }
+    if (!osLastSearchQuery) {
+        osSearchStatus.textContent = 'Enter a title to search.';
+        return;
+    }
+    if (resetPage) {
+        osSearchPage = 1;
+    }
+    const perPage = parseInt(osPerPageSelect.value, 10) || 25;
+
     osSearchBtn.disabled = true;
     osSearchStatus.textContent = 'Searching…';
     clearOpenSubtitlesSelection();
     try {
-        const lang = osAnyLanguage.checked ? '' : sourceLanguage.value;
         const resp = await fetch(`${API}/api/opensubtitles/search`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: q, language: lang, page: 1 }),
+            body: JSON.stringify({
+                query: osLastSearchQuery,
+                language: osLastSearchLang,
+                page: osSearchPage,
+                perPage,
+            }),
         });
         const data = await resp.json().catch(() => ({}));
         if (!resp.ok) {
             throw new Error(data.error || resp.statusText || 'Search failed');
         }
+        osTotalPages = data.totalPages != null ? data.totalPages : null;
+        osTotalCount = data.totalCount != null ? data.totalCount : null;
         rawSearchResults = data.results || [];
         activeLangFilter = 'all';
         if (!rawSearchResults.length) {
@@ -307,10 +374,14 @@ osSearchBtn.addEventListener('click', async () => {
                 'No subtitles found — try another query, widen language (all languages), or upload a file.';
             osLangChips.hidden = true;
             osResultsTable.hidden = true;
+            osPager.hidden = true;
         } else {
-            osSearchStatus.textContent = `${rawSearchResults.length} result(s). Pick one subtitle below.`;
+            const shown = rawSearchResults.length;
+            const totalHint = osTotalCount != null ? ` (${osTotalCount} matching overall)` : '';
+            osSearchStatus.textContent = `${shown} result(s) on this page${totalHint}. Pick one subtitle below.`;
             renderLangChips(rawSearchResults);
             filterAndRenderResults();
+            updateOsPagerVisibility();
         }
     } catch (e) {
         console.error(e);
@@ -318,9 +389,39 @@ osSearchBtn.addEventListener('click', async () => {
         rawSearchResults = [];
         osLangChips.hidden = true;
         osResultsTable.hidden = true;
+        osPager.hidden = true;
+        osTotalPages = null;
+        osTotalCount = null;
     } finally {
         osSearchBtn.disabled = false;
     }
+}
+
+osQuery.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        runOpenSubtitlesSearch({ refreshFromInput: true, resetPage: true });
+    }
+});
+
+osSearchBtn.addEventListener('click', () => {
+    runOpenSubtitlesSearch({ refreshFromInput: true, resetPage: true });
+});
+
+osPerPageSelect.addEventListener('change', () => {
+    runOpenSubtitlesSearch({ refreshFromInput: false, resetPage: true });
+});
+
+osPagePrev.addEventListener('click', () => {
+    if (osSearchPage <= 1) return;
+    osSearchPage -= 1;
+    runOpenSubtitlesSearch({ refreshFromInput: false, resetPage: false });
+});
+
+osPageNext.addEventListener('click', () => {
+    if (osSearchPage >= effectiveTotalPages()) return;
+    osSearchPage += 1;
+    runOpenSubtitlesSearch({ refreshFromInput: false, resetPage: false });
 });
 
 async function loadOpensubtitlesStatus() {
@@ -349,20 +450,28 @@ async function loadOpensubtitlesStatus() {
 
 loadOpensubtitlesStatus();
 
-// --- Form submit / translate ---
-document.getElementById('translationForm').addEventListener('submit', async function (e) {
+translationForm.addEventListener('submit', (e) => {
     e.preventDefault();
+});
 
-    const translateBtn = document.getElementById('translateBtn');
-    const loadingSpinner = document.getElementById('loadingSpinner');
-    const btnText = document.getElementById('btnText');
+translateConfirmCancel.addEventListener('click', () => {
+    translateConfirmDialog.close();
+});
+
+translateConfirmOk.addEventListener('click', async () => {
+    translateConfirmDialog.close();
+    await runTranslation();
+});
+
+translateBtn.addEventListener('click', () => {
     const errorMessage = document.getElementById('errorMessage');
-    const downloadSection = document.getElementById('downloadSection');
-    const progressBar = document.getElementById('progressBar');
-    const progressFill = document.getElementById('progressFill');
-    const progressPercent = document.getElementById('progressPercent');
-    const dualLanguage = document.getElementById('dualLanguage');
-
+    const source = document.getElementById('sourceLanguage').value;
+    const target = document.getElementById('targetLanguage').value;
+    if (source && target && source === target) {
+        errorMessage.textContent = 'Source and target languages cannot be the same.';
+        errorMessage.style.display = 'block';
+        return;
+    }
     if (isSearchMode()) {
         if (!fetchedId) {
             errorMessage.textContent =
@@ -377,6 +486,26 @@ document.getElementById('translationForm').addEventListener('submit', async func
             return;
         }
     }
+    errorMessage.style.display = 'none';
+    let summary;
+    if (isSearchMode()) {
+        summary = `Subtitle file: ${fetchedLabel}\nFrom: ${selectedOptionLabel(sourceLanguage)}\nTo: ${selectedOptionLabel(document.getElementById('targetLanguage'))}`;
+    } else {
+        summary = `Subtitle file: ${fileInput.files[0].name}\nFrom: ${selectedOptionLabel(sourceLanguage)}\nTo: ${selectedOptionLabel(document.getElementById('targetLanguage'))}`;
+    }
+    translateConfirmSummary.textContent = summary;
+    translateConfirmDialog.showModal();
+});
+
+async function runTranslation() {
+    const loadingSpinner = document.getElementById('loadingSpinner');
+    const btnText = document.getElementById('btnText');
+    const errorMessage = document.getElementById('errorMessage');
+    const downloadSection = document.getElementById('downloadSection');
+    const progressBar = document.getElementById('progressBar');
+    const progressFill = document.getElementById('progressFill');
+    const progressPercent = document.getElementById('progressPercent');
+    const dualLanguage = document.getElementById('dualLanguage');
 
     errorMessage.style.display = 'none';
     downloadSection.style.display = 'none';
@@ -501,6 +630,9 @@ document.getElementById('translationForm').addEventListener('submit', async func
             osLangChips.hidden = true;
             osResultsTable.hidden = true;
             osResultsBody.innerHTML = '';
+            osPager.hidden = true;
+            osTotalPages = null;
+            osTotalCount = null;
         }
 
         downloadSection.style.display = 'block';
@@ -528,7 +660,7 @@ document.getElementById('translationForm').addEventListener('submit', async func
             progressPercent.textContent = '0%';
         }, 1000);
     }
-});
+}
 
 document.getElementById('sourceLanguage').addEventListener('change', validateLanguages);
 document.getElementById('targetLanguage').addEventListener('change', validateLanguages);
@@ -541,9 +673,9 @@ function validateLanguages() {
     if (source && target && source === target) {
         errorMessage.textContent = 'Source and target languages cannot be the same.';
         errorMessage.style.display = 'block';
-        document.getElementById('translateBtn').disabled = true;
+        translateBtn.disabled = true;
     } else {
         errorMessage.style.display = 'none';
-        document.getElementById('translateBtn').disabled = false;
+        translateBtn.disabled = false;
     }
 }

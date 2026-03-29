@@ -238,6 +238,99 @@ label {
     border-bottom-color: #c5cae9;
 }
 
+.os-pager {
+    margin-top: 16px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.os-pager-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 500;
+    color: #555;
+}
+
+.os-pager-select {
+    width: auto;
+    min-width: 80px;
+    padding: 10px 14px;
+}
+
+.os-pager-nav {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.os-pager-btn {
+    width: auto;
+    margin-top: 0;
+    padding: 10px 18px;
+}
+
+.os-page-info {
+    color: #555;
+    font-weight: 600;
+    min-width: 140px;
+    text-align: center;
+}
+
+.confirm-dialog {
+    max-width: min(480px, calc(100vw - 32px));
+    padding: 0;
+    border: none;
+    border-radius: 16px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+}
+
+.confirm-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.45);
+}
+
+.confirm-dialog-inner {
+    padding: 28px;
+}
+
+.confirm-dialog-title {
+    margin: 0 0 12px 0;
+    font-size: 1.35em;
+    font-weight: 600;
+    color: #333;
+}
+
+.confirm-dialog-body {
+    margin: 0 0 24px 0;
+    line-height: 1.5;
+    color: #444;
+    white-space: pre-wrap;
+}
+
+.confirm-dialog-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: flex-end;
+}
+
+.confirm-dialog-actions .secondary-btn {
+    margin-top: 0;
+    width: auto;
+    min-width: 100px;
+}
+
+.confirm-dialog-confirm {
+    width: auto;
+    min-width: 120px;
+    padding: 14px 22px;
+    margin-top: 0;
+}
+
 select, input[type="file"] {
     width: 100%;
     padding: 15px;

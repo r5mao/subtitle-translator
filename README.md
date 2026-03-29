@@ -82,7 +82,9 @@ To force a different API origin, uncomment and set the meta tag in `index.html`:
 
 - Choose **Search OpenSubtitles** or **Upload file**.
 - Search uses the **Original Language** dropdown to filter subtitle language unless **Search all languages** is checked (title-only search, then use language chips in results).
-- After you **Select** a row, the app fetches that subtitle server-side; **Translate** uses the same pipeline as an upload.
+- Press **Enter** in the title field to run the same search as the **Search subtitles** button (Enter does **not** start translation).
+- Use **rows per page** and **Previous** / **Next** to page through OpenSubtitles results.
+- After you **Select** a row, the app fetches that subtitle server-side. Click **Translate Subtitles**, confirm in the dialog, then translation runs (same pipeline as an upload).
 
 ## API Endpoints
 
@@ -92,7 +94,7 @@ To force a different API origin, uncomment and set the meta tag in `index.html`:
 | `GET` | `/api/languages` | Supported translation languages |
 | `GET` | `/api/task` | New UUID for translation progress (SSE) |
 | `GET` | `/api/opensubtitles/status` | `{ "configured": true/false }` — credentials present |
-| `POST` | `/api/opensubtitles/search` | JSON: `query`, optional `language` (UI code), optional `page` |
+| `POST` | `/api/opensubtitles/search` | JSON: `query`, optional `language` (UI code), optional `page`, optional `perPage` (`10`, `25`, `50`, or `100`; default `25`). Response includes `results`, `page`, `perPage`, `totalPages`, `totalCount`. |
 | `POST` | `/api/opensubtitles/fetch` | JSON: `file_id` — downloads subtitle to a temp file, returns `fetchedId` |
 | `POST` | `/api/translate` | Multipart: `sourceLanguage`, `targetLanguage`, `dualLanguage`, `taskId`, and **either** `srtFile` **or** `fetchedId` |
 | `GET` | `/api/translate/progress/<task_id>` | SSE progress |

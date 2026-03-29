@@ -18,14 +18,22 @@ def _reset_os_language_cache():
 class _FakeOpenSubtitlesClient:
     """Stub for OpenSubtitlesClient in route tests."""
 
+    last_search = None
+
     def __init__(self):
         pass
 
     def configured(self):
         return True
 
-    def search(self, query, languages="", page=1):
+    def search(self, query, languages="", page=1, per_page=25):
         assert query.strip()
+        type(self).last_search = {
+            "query": query,
+            "languages": languages,
+            "page": page,
+            "per_page": per_page,
+        }
         return {
             "data": [
                 {
@@ -40,7 +48,8 @@ class _FakeOpenSubtitlesClient:
                     },
                 }
             ],
-            "total_pages": 1,
+            "total_pages": 3,
+            "total_count": 75,
         }
 
     def download_file(self, file_id):
@@ -93,6 +102,32 @@ def test_opensubtitles_search_returns_results(client, os_env_configured, monkeyp
     assert row["language"] == "en"
     assert row["languageName"] == "English"
     assert row["title"] == "Test Movie"
+    assert data["page"] == 1
+    assert data["perPage"] == 25
+    assert data["totalPages"] == 3
+    assert data["totalCount"] == 75
+    assert _FakeOpenSubtitlesClient.last_search["per_page"] == 25
+
+
+def test_opensubtitles_search_accepts_per_page(client, os_env_configured, monkeypatch):
+    monkeypatch.setattr(
+        "srt_translator.api.opensubtitles_routes.OpenSubtitlesClient",
+        _FakeOpenSubtitlesClient,
+    )
+    monkeypatch.setattr(
+        "srt_translator.api.opensubtitles_routes.get_language_name_lookup",
+        lambda _c: {"en": "English"},
+    )
+    resp = client.post(
+        "/api/opensubtitles/search",
+        json={"query": "Test Movie", "language": "en", "page": 2, "perPage": 50},
+    )
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["page"] == 2
+    assert data["perPage"] == 50
+    assert _FakeOpenSubtitlesClient.last_search["page"] == 2
+    assert _FakeOpenSubtitlesClient.last_search["per_page"] == 50
 
 
 def test_opensubtitles_fetch_stores_temp_file(client, os_env_configured, monkeypatch):

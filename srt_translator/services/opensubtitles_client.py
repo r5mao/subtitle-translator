@@ -161,10 +161,15 @@ class OpenSubtitlesClient:
         *,
         languages: str = "",
         page: int = 1,
+        per_page: int = 25,
     ) -> dict[str, Any]:
         """Search subtitles. `languages` is comma-separated OS codes; empty = any language."""
         self.login()
-        q: dict[str, str] = {"query": query.strip(), "page": str(max(1, page))}
+        q: dict[str, str] = {
+            "query": query.strip(),
+            "page": str(max(1, page)),
+            "per_page": str(max(1, min(100, int(per_page)))),
+        }
         if languages.strip():
             q["languages"] = languages.strip()
         return self._request("GET", "/api/v1/subtitles", query=q)
@@ -380,4 +385,16 @@ def total_pages_from_response(api_json: dict[str, Any]) -> Optional[int]:
         tp = m.get("total_pages")
         if isinstance(tp, int):
             return tp
+    return None
+
+
+def total_count_from_response(api_json: dict[str, Any]) -> Optional[int]:
+    tc = api_json.get("total_count")
+    if isinstance(tc, int):
+        return tc
+    m = api_json.get("meta") or {}
+    if isinstance(m, dict):
+        tc = m.get("total_count")
+        if isinstance(tc, int):
+            return tc
     return None
