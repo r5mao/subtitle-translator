@@ -4,11 +4,20 @@ from flask import Flask, send_from_directory
 from flask_cors import CORS
 import os
 from pathlib import Path
+
+from dotenv import load_dotenv
+
 from .api import api_bp
+
+# Project root (parent of this package) — same folder as app.py
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def create_app():
     """Create and configure the Flask application."""
+    # Load .env from project root so OPENSUBTITLES_* etc. work regardless of shell cwd
+    load_dotenv(_PROJECT_ROOT / ".env")
+
     app = Flask(__name__, 
                static_folder=os.path.abspath('static'),
                template_folder=os.path.abspath('.'))

@@ -3,10 +3,9 @@
 Main application entry point using the new app factory pattern.
 This allows running the app with: python app.py
 """
-from dotenv import load_dotenv
-load_dotenv()  # Load environment variables from .env file
-
 from srt_translator import create_app
+
+# Environment variables are loaded in create_app() from the project-root .env
 
 if __name__ == '__main__':
     app = create_app()
