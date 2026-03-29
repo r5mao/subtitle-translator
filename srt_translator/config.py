@@ -16,6 +16,12 @@ class Config:
     
     # Translation settings
     DEFAULT_TARGET_LANGUAGE = 'en'
+
+    # OpenSubtitles.com (optional — search / fetch original subtitles)
+    # Set OPENSUBTITLES_API_KEY, OPENSUBTITLES_USERNAME, OPENSUBTITLES_PASSWORD in .env
+    OPENSUBTITLES_API_KEY = os.environ.get('OPENSUBTITLES_API_KEY', '')
+    OPENSUBTITLES_USERNAME = os.environ.get('OPENSUBTITLES_USERNAME', '')
+    OPENSUBTITLES_PASSWORD = os.environ.get('OPENSUBTITLES_PASSWORD', '')
     
     # Flask settings
     DEBUG = True  # Default to debug mode for hobby project

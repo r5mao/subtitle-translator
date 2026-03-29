@@ -100,34 +100,58 @@ def translate_srt():
     """
 
     # Validate request
-    if 'srtFile' not in request.files:
-        return jsonify({'error': 'No SRT file provided'}), 400
     if 'sourceLanguage' not in request.form or 'targetLanguage' not in request.form:
         return jsonify({'error': 'Source and target languages required'}), 400
-    srt_file = request.files['srtFile']
     source_lang = request.form['sourceLanguage']
     target_lang = request.form['targetLanguage']
-    google_dest = google_translate_dest(target_lang)
-    use_pinyin = is_pinyin_target(target_lang)
-    dual_language = request.form.get('dualLanguage', 'false').strip().lower() in ('true', 'on', '1', 'yes')
-    task_id = request.form['taskId']
-    translation_progress[task_id] = {'progress': 0, 'status': 'started'}
-    # Validate file
-    if srt_file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
-    allowed_exts = ('.srt', '.ass', '.ssa', '.sub')
-    if not srt_file.filename.lower().endswith(allowed_exts):
-        return jsonify({'error': 'File must be a subtitle file (SRT, ASS, SSA, SUB)'}), 400
-    # Validate languages
     if source_lang == target_lang:
         return jsonify({'error': 'Source and target languages cannot be the same'}), 400
     if source_lang not in translation_service.language_names:
         return jsonify({'error': f'Unsupported source language: {source_lang}'}), 400
     if target_lang not in translation_service.language_names:
         return jsonify({'error': f'Unsupported target language: {target_lang}'}), 400
-    # Read and decode file content
-    try:
+    google_dest = google_translate_dest(target_lang)
+    use_pinyin = is_pinyin_target(target_lang)
+    dual_language = request.form.get('dualLanguage', 'false').strip().lower() in ('true', 'on', '1', 'yes')
+    task_id = request.form['taskId']
+    translation_progress[task_id] = {'progress': 0, 'status': 'started'}
+
+    fetched_id = request.form.get('fetchedId', '').strip()
+    file_content = None
+    original_filename = None
+    fetched_temp_path = None
+
+    if fetched_id:
+        if not re.match(r'^[a-f0-9-]{36}$', fetched_id):
+            return jsonify({'error': 'Invalid fetched subtitle id'}), 400
+        temp_dir = tempfile.gettempdir()
+        prefix = f"{fetched_id}_"
+        matches = [f for f in os.listdir(temp_dir) if f.startswith(prefix)]
+        if not matches:
+            return jsonify({'error': 'Fetched subtitle expired or not found. Search and select again.'}), 404
+        fname_key = matches[0]
+        fetched_temp_path = os.path.join(temp_dir, fname_key)
+        original_filename = fname_key[len(prefix):]
+        try:
+            with open(fetched_temp_path, 'rb') as f:
+                file_content = f.read()
+        except OSError as e:
+            logger.error("Could not read fetched subtitle: %s", e)
+            return jsonify({'error': 'Could not read fetched subtitle'}), 500
+    else:
+        if 'srtFile' not in request.files:
+            return jsonify({'error': 'No subtitle file or OpenSubtitles selection provided'}), 400
+        srt_file = request.files['srtFile']
+        if srt_file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        original_filename = srt_file.filename
         file_content = srt_file.read()
+
+    allowed_exts = ('.srt', '.ass', '.ssa', '.sub')
+    if not original_filename.lower().endswith(allowed_exts):
+        return jsonify({'error': 'File must be a subtitle file (SRT, ASS, SSA, SUB)'}), 400
+    # Decode file content
+    try:
         encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252']
         content = None
         for encoding in encodings:
@@ -147,7 +171,6 @@ def translate_srt():
     logger.info(f"Translation started at {translation_start_time.strftime('%Y-%m-%d %H:%M:%S')}")
     # Parse subtitle content (auto-detect format)
     try:
-        original_filename = srt_file.filename
         base_name = os.path.splitext(original_filename)[0]
         fmt, parsed = SubtitleParser.parse(content)
         logger.info(f"Parsed subtitle file as format: {fmt}")
@@ -336,6 +359,13 @@ def translate_srt():
         with open(temp_file_path, 'w', encoding='utf-8') as temp_file:
             temp_file.write(translated_content)
         logger.info(f"Created translated file: {temp_file_path}")
+        if fetched_temp_path and os.path.exists(fetched_temp_path):
+            try:
+                os.remove(fetched_temp_path)
+                logger.info("Removed fetched subtitle temp file after translate")
+            except OSError as e:
+                logger.warning("Could not remove fetched temp file: %s", e)
+
         return jsonify({
             'success': True,
             'message': 'Translation completed successfully',
@@ -437,3 +467,8 @@ def sse_translation_progress(task_id):
         'X-Accel-Buffering': 'no'  # For nginx, disables response buffering
     }
     return Response(event_stream(), headers=headers)
+
+
+from srt_translator.api.opensubtitles_routes import register_opensubtitles_routes
+
+register_opensubtitles_routes(api_bp)
