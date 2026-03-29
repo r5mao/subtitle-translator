@@ -4,7 +4,15 @@ import uuid
 
 import pytest
 
+from srt_translator.services.opensubtitles_client import reset_subtitle_language_names_cache
 from tests.test_translate_and_download import make_srt
+
+
+@pytest.fixture(autouse=True)
+def _reset_os_language_cache():
+    reset_subtitle_language_names_cache()
+    yield
+    reset_subtitle_language_names_cache()
 
 
 class _FakeOpenSubtitlesClient:
@@ -69,6 +77,10 @@ def test_opensubtitles_search_returns_results(client, os_env_configured, monkeyp
         "srt_translator.api.opensubtitles_routes.OpenSubtitlesClient",
         _FakeOpenSubtitlesClient,
     )
+    monkeypatch.setattr(
+        "srt_translator.api.opensubtitles_routes.get_language_name_lookup",
+        lambda _c: {"en": "English"},
+    )
     resp = client.post(
         "/api/opensubtitles/search",
         json={"query": "Test Movie", "language": "en", "page": 1},
@@ -79,6 +91,7 @@ def test_opensubtitles_search_returns_results(client, os_env_configured, monkeyp
     row = data["results"][0]
     assert row["fileId"] == "999001"
     assert row["language"] == "en"
+    assert row["languageName"] == "English"
     assert row["title"] == "Test Movie"
 
 
@@ -156,3 +169,24 @@ def test_ui_pinyin_maps_to_base_zh_for_search():
     from srt_translator.services.opensubtitles_lang import ui_lang_to_opensubtitles
 
     assert ui_lang_to_opensubtitles("zh-cn-pinyin") == "zh-cn"
+
+
+def test_flatten_subtitle_results_language_name():
+    from srt_translator.services.opensubtitles_client import flatten_subtitle_results
+
+    payload = {
+        "data": [
+            {
+                "type": "subtitle",
+                "attributes": {
+                    "language": "fr",
+                    "files": [{"file_id": 1, "file_name": "x.srt"}],
+                    "feature_details": {"movie_name": "M"},
+                },
+            }
+        ]
+    }
+    rows = flatten_subtitle_results(payload, language_names={"fr": "French"})
+    assert len(rows) == 1
+    assert rows[0]["language"] == "fr"
+    assert rows[0]["languageName"] == "French"

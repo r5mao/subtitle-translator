@@ -135,6 +135,16 @@ function languageCounts(rows) {
     return m;
 }
 
+function displayLanguageLabel(code, rows) {
+    if (!code || code === '?') return code;
+    for (const r of rows) {
+        if ((r.language || '') === code && r.languageName) {
+            return r.languageName;
+        }
+    }
+    return code;
+}
+
 function renderLangChips(rows) {
     const counts = languageCounts(rows);
     const keys = Array.from(counts.keys()).sort();
@@ -159,7 +169,7 @@ function renderLangChips(rows) {
     };
     addChip('all', 'All languages', rows.length);
     for (const k of keys) {
-        addChip(k, k, counts.get(k));
+        addChip(k, displayLanguageLabel(k, rows), counts.get(k));
     }
 }
 
@@ -171,8 +181,14 @@ function esc(s) {
 
 function rowInfo(r) {
     const parts = [];
-    if (r.downloads != null) parts.push(`${r.downloads} dl`);
-    if (r.fps != null) parts.push(`${r.fps} fps`);
+    const dl = r.downloads;
+    if (typeof dl === 'number' && Number.isFinite(dl) && dl >= 0) {
+        parts.push(`${dl} dl`);
+    }
+    const fps = r.fps;
+    if (typeof fps === 'number' && Number.isFinite(fps) && fps > 0) {
+        parts.push(`${fps} fps`);
+    }
     if (r.hearingImpaired) parts.push('HI');
     if (r.machineTranslated) parts.push('MT');
     return parts.length ? parts.join(' · ') : '—';
@@ -184,9 +200,10 @@ function titleCell(r) {
     if (r.season != null && r.episode != null) {
         t += ` S${r.season}E${r.episode}`;
     }
-    let html = esc(t);
+    let html = t ? esc(t) : '';
     if (r.release) html += `<div class="cell-muted">${esc(r.release)}</div>`;
-    return html || esc(r.fileName);
+    if (r.fileName) html += `<div class="cell-muted">${esc(r.fileName)}</div>`;
+    return html || '—';
 }
 
 function filterAndRenderResults() {
@@ -205,8 +222,7 @@ function filterAndRenderResults() {
         const busy = fetchedId !== null;
         tr.innerHTML = `
             <td>${titleCell(r)}</td>
-            <td>${esc(r.language || '')}</td>
-            <td><span class="cell-muted">${esc(r.fileName || '')}</span></td>
+            <td>${esc(r.languageName || r.language || '')}</td>
             <td class="cell-muted">${esc(rowInfo(r))}</td>
             <td><button type="button" class="os-select-btn" data-file-id="${esc(r.fileId)}">Select</button></td>
         `;

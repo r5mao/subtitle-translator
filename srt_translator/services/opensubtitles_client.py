@@ -14,6 +14,9 @@ from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
+# Filled from GET /api/v1/infos/languages (code -> display name)
+_subtitle_language_names_cache: Optional[dict[str, str]] = None
+
 DEFAULT_API_ROOT = "https://api.opensubtitles.com"
 DEFAULT_USER_AGENT = os.environ.get("OPENSUBTITLES_USER_AGENT", "SubtitleTranslatorApp 1.0")
 
@@ -147,6 +150,11 @@ class OpenSubtitlesClient:
         self._base_url = _https_base(str(base))
         logger.info("OpenSubtitles login OK, base_url=%s", self._base_url)
 
+    def fetch_language_names(self) -> dict[str, str]:
+        """Map OpenSubtitles language_code -> human-readable name (GET /infos/languages)."""
+        payload = self._request("GET", "/api/v1/infos/languages")
+        return _parse_language_infos_payload(payload)
+
     def search(
         self,
         query: str,
@@ -200,10 +208,85 @@ class OpenSubtitlesClient:
         return raw, fname
 
 
-def flatten_subtitle_results(api_json: dict[str, Any]) -> list[dict[str, Any]]:
+def reset_subtitle_language_names_cache() -> None:
+    """Clear cached language table (for tests)."""
+    global _subtitle_language_names_cache
+    _subtitle_language_names_cache = None
+
+
+def _parse_language_infos_payload(data: dict[str, Any]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    items = data.get("data")
+    if not isinstance(items, list):
+        return out
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        attrs = item.get("attributes")
+        if isinstance(attrs, dict):
+            code = attrs.get("language_code") or attrs.get("code")
+            name = attrs.get("language_name") or attrs.get("name")
+        else:
+            code = item.get("language_code")
+            name = item.get("language_name")
+        if code and name:
+            out[str(code).strip()] = str(name).strip()
+    return out
+
+
+def get_language_name_lookup(client: OpenSubtitlesClient) -> dict[str, str]:
+    """Return cached OpenSubtitles language code -> display name map."""
+    global _subtitle_language_names_cache
+    if _subtitle_language_names_cache is not None:
+        return _subtitle_language_names_cache
+    client.login()
+    try:
+        _subtitle_language_names_cache = client.fetch_language_names()
+    except OpenSubtitlesError as e:
+        logger.warning("Could not load OpenSubtitles language names: %s", e)
+        _subtitle_language_names_cache = {}
+    return _subtitle_language_names_cache
+
+
+def _safe_download_count(value: Any) -> Optional[int]:
+    """Only return a count for Info column; ignore non-numeric API garbage."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int) and value >= 0:
+        return value
+    if isinstance(value, float) and value.is_integer() and value >= 0:
+        return int(value)
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
+    return None
+
+
+def _safe_fps(value: Any) -> Optional[float]:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        f = float(value)
+        if 0 < f < 1000:
+            return round(f, 3)
+        return None
+    if isinstance(value, str):
+        try:
+            f = float(value.strip().replace(",", "."))
+            if 0 < f < 1000:
+                return round(f, 3)
+        except ValueError:
+            pass
+    return None
+
+
+def flatten_subtitle_results(
+    api_json: dict[str, Any],
+    language_names: Optional[dict[str, str]] = None,
+) -> list[dict[str, Any]]:
     """
     Normalize OpenSubtitles list response into UI rows (one per downloadable file).
     Tolerates schema variations.
+    language_names: optional map from OpenSubtitles language_code to display name.
     """
     rows: list[dict[str, Any]] = []
     items = api_json.get("data")
@@ -228,8 +311,8 @@ def flatten_subtitle_results(api_json: dict[str, Any]) -> list[dict[str, Any]]:
 
         language = attr.get("language") or ""
         release = attr.get("release") or ""
-        downloads = attr.get("download_count")
-        fps = attr.get("fps")
+        downloads = _safe_download_count(attr.get("download_count"))
+        fps = _safe_fps(attr.get("fps"))
         hi = attr.get("hearing_impaired")
         machine = attr.get("machine_translated")
         trusted = attr.get("from_trusted")
@@ -253,6 +336,17 @@ def flatten_subtitle_results(api_json: dict[str, Any]) -> list[dict[str, Any]]:
             ext = ""
             if isinstance(file_name, str) and "." in file_name:
                 ext = file_name.rsplit(".", 1)[-1].lower()
+            lc = str(language or "").strip()
+            lang_display = lc
+            if language_names and lc:
+                lang_display = (
+                    language_names.get(lc)
+                    or language_names.get(lc.lower())
+                    or next(
+                        (language_names[k] for k in language_names if k.lower() == lc.lower()),
+                        lc,
+                    )
+                )
             rows.append(
                 {
                     "fileId": str(fid),
@@ -262,7 +356,8 @@ def flatten_subtitle_results(api_json: dict[str, Any]) -> list[dict[str, Any]]:
                     "episode": episode,
                     "featureType": feature_type,
                     "release": release,
-                    "language": language,
+                    "language": lc,
+                    "languageName": lang_display,
                     "fileName": file_name,
                     "format": ext or "srt",
                     "downloads": downloads,

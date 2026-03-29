@@ -12,6 +12,7 @@ from srt_translator.services.opensubtitles_client import (
     OpenSubtitlesError,
     OpenSubtitlesNotConfigured,
     flatten_subtitle_results,
+    get_language_name_lookup,
     total_pages_from_response,
 )
 from srt_translator.services.opensubtitles_lang import ui_lang_to_opensubtitles
@@ -43,8 +44,9 @@ def register_opensubtitles_routes(api_bp):
             ui_lang = (body.get("language") or "").strip()
             os_langs = ui_lang_to_opensubtitles(ui_lang) if ui_lang else ""
             page = int(body.get("page") or 1)
+            lang_lookup = get_language_name_lookup(c)
             raw = c.search(query, languages=os_langs, page=page)
-            rows = flatten_subtitle_results(raw)
+            rows = flatten_subtitle_results(raw, language_names=lang_lookup)
             tp = total_pages_from_response(raw)
             return jsonify(
                 {
