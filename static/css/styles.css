@@ -230,27 +230,12 @@ label {
     cursor: wait;
 }
 
-.selected-banner {
-    margin-top: 16px;
-    padding: 14px 16px;
-    background: #e8f5e9;
-    border-radius: 12px;
-    border: 1px solid #a5d6a7;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    flex-wrap: wrap;
+.os-results-table tr.os-row-selected {
+    background: #eef0ff;
 }
 
-.linkish-btn {
-    background: none;
-    border: none;
-    color: #1976d2;
-    font-weight: 600;
-    cursor: pointer;
-    text-decoration: underline;
-    font-size: 1em;
+.os-results-table tr.os-row-selected td {
+    border-bottom-color: #c5cae9;
 }
 
 select, input[type="file"] {

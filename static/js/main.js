@@ -85,9 +85,6 @@ const osSearchStatus = document.getElementById('osSearchStatus');
 const osLangChips = document.getElementById('osLangChips');
 const osResultsTable = document.getElementById('osResultsTable');
 const osResultsBody = document.getElementById('osResultsBody');
-const osSelectedBanner = document.getElementById('osSelectedBanner');
-const osSelectedText = document.getElementById('osSelectedText');
-const osChangeBtn = document.getElementById('osChangeBtn');
 const sourceLanguage = document.getElementById('sourceLanguage');
 
 let opensubtitlesConfigured = false;
@@ -95,6 +92,9 @@ let rawSearchResults = [];
 let activeLangFilter = 'all';
 let fetchedId = null;
 let fetchedLabel = '';
+/** OpenSubtitles file id for the row that is selected (highlight + toggle off). */
+let selectedOsFileId = null;
+let fetchInProgressFileId = null;
 
 function isSearchMode() {
     return sourceSearch.checked;
@@ -103,8 +103,8 @@ function isSearchMode() {
 function clearOpenSubtitlesSelection() {
     fetchedId = null;
     fetchedLabel = '';
-    osSelectedBanner.hidden = true;
-    osSelectedText.textContent = '';
+    selectedOsFileId = null;
+    fetchInProgressFileId = null;
 }
 
 function syncSubtitleSourcePanels() {
@@ -120,11 +120,6 @@ function syncSubtitleSourcePanels() {
 
 sourceSearch.addEventListener('change', syncSubtitleSourcePanels);
 sourceUpload.addEventListener('change', syncSubtitleSourcePanels);
-
-osChangeBtn.addEventListener('click', () => {
-    clearOpenSubtitlesSelection();
-    filterAndRenderResults();
-});
 
 function languageCounts(rows) {
     const m = new Map();
@@ -212,33 +207,49 @@ function filterAndRenderResults() {
     if (activeLangFilter !== 'all') {
         rows = rows.filter((r) => (r.language || '') === activeLangFilter);
     }
+    if (fetchedId && selectedOsFileId != null) {
+        const visible = new Set(rows.map((r) => String(r.fileId)));
+        if (!visible.has(String(selectedOsFileId))) {
+            clearOpenSubtitlesSelection();
+        }
+    }
     if (!rows.length) {
         osResultsTable.hidden = true;
         return;
     }
     osResultsTable.hidden = false;
     for (const r of rows) {
+        const fid = String(r.fileId);
         const tr = document.createElement('tr');
-        const busy = fetchedId !== null;
+        const isSelected = Boolean(fetchedId && selectedOsFileId != null && String(selectedOsFileId) === fid);
+        const isFetching = fetchInProgressFileId != null && String(fetchInProgressFileId) === fid;
+        if (isSelected) tr.classList.add('os-row-selected');
+        const btnLabel = isFetching ? '…' : isSelected ? 'Selected' : 'Select';
         tr.innerHTML = `
             <td>${titleCell(r)}</td>
             <td>${esc(r.languageName || r.language || '')}</td>
             <td class="cell-muted">${esc(rowInfo(r))}</td>
-            <td><button type="button" class="os-select-btn" data-file-id="${esc(r.fileId)}">Select</button></td>
+            <td><button type="button" class="os-select-btn" data-file-id="${esc(r.fileId)}" aria-pressed="${isSelected ? 'true' : 'false'}">${btnLabel}</button></td>
         `;
         const btn = tr.querySelector('.os-select-btn');
-        if (busy) btn.disabled = true;
         btn.addEventListener('click', () => selectSubtitleFile(r.fileId, r));
         osResultsBody.appendChild(tr);
     }
 }
 
 async function selectSubtitleFile(fileId, row) {
+    const fid = String(fileId);
+    if (fetchedId && selectedOsFileId != null && String(selectedOsFileId) === fid) {
+        clearOpenSubtitlesSelection();
+        filterAndRenderResults();
+        return;
+    }
+    if (fetchInProgressFileId != null) {
+        return;
+    }
     const label = row.fileName || row.title || fileId;
-    const buttons = osResultsBody.querySelectorAll('.os-select-btn');
-    buttons.forEach((b) => {
-        b.disabled = true;
-    });
+    fetchInProgressFileId = fid;
+    filterAndRenderResults();
     try {
         const resp = await fetch(`${API}/api/opensubtitles/fetch`, {
             method: 'POST',
@@ -251,13 +262,16 @@ async function selectSubtitleFile(fileId, row) {
         }
         fetchedId = data.fetchedId;
         fetchedLabel = data.filename || label;
-        osSelectedBanner.hidden = false;
-        osSelectedText.textContent = `Using: ${fetchedLabel}`;
+        selectedOsFileId = fid;
         osSearchStatus.textContent = '';
-        filterAndRenderResults();
     } catch (e) {
         console.error(e);
         osSearchStatus.textContent = e.message || String(e);
+        selectedOsFileId = null;
+        fetchedId = null;
+        fetchedLabel = '';
+    } finally {
+        fetchInProgressFileId = null;
         filterAndRenderResults();
     }
 }
