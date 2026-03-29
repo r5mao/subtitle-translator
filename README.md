@@ -3,7 +3,10 @@
 A web application for translating subtitle files between languages using Google Translate, built with Flask and a vanilla HTML/JS frontend.
 
 ## Features
-- Upload subtitle files (**SRT**, **ASS/SSA**, **SUB**) and translate them to another language
+
+- **Subtitle input (pick one):**
+  - **Upload** **SRT**, **ASS/SSA**, or **SUB** files from disk, or
+  - **Search [OpenSubtitles.com](https://www.opensubtitles.com/)** (optional) by movie/show title and select a subtitle file—no manual download step
 - Preserves subtitle timing and formatting
 - Supports many major languages (including Chinese + Pinyin target options)
 - Download translated files
@@ -15,10 +18,12 @@ A web application for translating subtitle files between languages using Google 
 <img width="2549" height="1328" alt="image" src="https://github.com/user-attachments/assets/70f173d9-b681-4f9a-8e7f-ae934e24b0a4" />
 
 ## Requirements
+
 - Python 3.8+ (**googletrans 4.0.2** uses current `httpx` and does not need the old stdlib `cgi` module)
-- Dependencies are pinned in `requirements.txt` (Flask, Flask-CORS, **googletrans 4.0.2**, etc.)
+- Dependencies are pinned in `requirements.txt` (Flask, Flask-CORS, **googletrans 4.0.2**, python-dotenv, etc.)
 
 ## Installation
+
 1. Clone this repository or copy the project files.
 2. Create and activate a virtual environment (recommended):
    ```
@@ -33,67 +38,118 @@ A web application for translating subtitle files between languages using Google 
    pip install -r requirements.txt
    ```
 
+## Configuration (optional OpenSubtitles)
+
+Search-from-catalog is **off** until you add API credentials. Register at [OpenSubtitles.com](https://www.opensubtitles.com/), create an **API key**, and add a `.env` file in the **project root** (same folder as `app.py`):
+
+```
+OPENSUBTITLES_API_KEY=your_api_key_here
+OPENSUBTITLES_USERNAME=your_opensubtitles_username
+OPENSUBTITLES_PASSWORD=your_opensubtitles_password
+```
+
+Optional:
+
+```
+OPENSUBTITLES_USER_AGENT=YourAppName 1.0
+```
+
+The app loads `.env` from the project root inside `create_app()`, so variables are available **even if your shell’s current directory is not the project folder**.
+
+**Security:** Never expose these values in the browser or commit `.env` to git (it should stay in `.gitignore`).
 
 ## Usage
 
-### 1. Start the Flask backend (API server):
+### 1. Start the Flask backend
+
 ```
 python app.py
 ```
-The API will be available at http://localhost:5000
 
-### 2. Serve the frontend (optional static server):
-If you do not rely on Flask’s root route alone, from the **project root** run:
-```
-python -m http.server 8080
-```
-Then open the app (or `index.html`) as you prefer.
+The app and API are available at **http://localhost:5000/** (Flask serves `index.html` at `/` and static files under `/static/`). This is the simplest way to run everything.
 
-**Note:**
-- For development, Flask serves `index.html` at `/` and static assets under `/static/`. You can use **http://localhost:5000/** directly.
-- If you use a separate static server on another port, the frontend is configured to call the API at `http://localhost:5000` (see `static/js/main.js`).
-- If you want a different port or host, adjust the URLs accordingly.
+### 2. Optional: separate static server
+
+If you serve the UI with something like `python -m http.server 8080` from the project root, open **http://localhost:8080/** (or your chosen port). The bundled `main.js` will send API requests to the **same hostname on port 5000** (e.g. `http://127.0.0.1:5000`) when the page is on common dev ports (8080, 5500, 3000) on `localhost` / `127.0.0.1`, as long as Flask is still running on port 5000.
+
+To force a different API origin, uncomment and set the meta tag in `index.html`:
+
+```html
+<meta name="subtitle-translator-api-base" content="http://127.0.0.1:5000">
+```
+
+### OpenSubtitles UI (when configured)
+
+- Choose **Search OpenSubtitles** or **Upload file**.
+- Search uses the **Original Language** dropdown to filter subtitle language unless **Search all languages** is checked (title-only search, then use language chips in results).
+- After you **Select** a row, the app fetches that subtitle server-side; **Translate** uses the same pipeline as an upload.
 
 ## API Endpoints
-- `GET /api/health` — Health check
-- `GET /api/languages` — List supported languages
-- `POST /api/translate` — Translate subtitle file (multipart form: `srtFile`, `sourceLanguage`, `targetLanguage`, etc.)
-- `GET /api/download/<file_id>` — Download translated file
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/health` | Health check |
+| `GET` | `/api/languages` | Supported translation languages |
+| `GET` | `/api/task` | New UUID for translation progress (SSE) |
+| `GET` | `/api/opensubtitles/status` | `{ "configured": true/false }` — credentials present |
+| `POST` | `/api/opensubtitles/search` | JSON: `query`, optional `language` (UI code), optional `page` |
+| `POST` | `/api/opensubtitles/fetch` | JSON: `file_id` — downloads subtitle to a temp file, returns `fetchedId` |
+| `POST` | `/api/translate` | Multipart: `sourceLanguage`, `targetLanguage`, `dualLanguage`, `taskId`, and **either** `srtFile` **or** `fetchedId` |
+| `GET` | `/api/translate/progress/<task_id>` | SSE progress |
+| `GET` | `/api/download/<file_id>` | Download translated file |
+
+OpenSubtitles routes return **503** with a clear message if credentials are missing.
 
 ## Automated Tests
-From the project root, run:
+
+From the project root:
+
 ```
 python -m pytest -q
 ```
 
-If you see "pytest is not recognized", install it into your current environment and try again:
+If you see "pytest is not recognized":
+
 ```
 python -m pip install -U pytest
 python -m pytest -q
 ```
 
-Notes for tests:
-- You do **not** need to start the Flask app or a static file server to run tests. The tests use Flask’s in-process test client.
+You do **not** need to start Flask or a static server; tests use Flask’s in-process client. OpenSubtitles calls are mocked where needed.
 
 ## Project Structure
+
 ```
 project root/
-├── app.py                 # Run the Flask app
-├── index.html             # Frontend web UI
-├── static/                 # CSS, JS, favicon
-├── srt_translator/         # Flask app package (API, translation, parsers)
-├── requirements.txt        # Pinned Python dependencies
-└── tests/                  # Pytest suite
+├── app.py                          # Entry: run Flask
+├── index.html                      # Frontend UI
+├── static/                         # CSS, JS, favicon
+├── srt_translator/
+│   ├── __init__.py                 # create_app(), loads .env from project root
+│   ├── config.py
+│   ├── api/
+│   │   ├── __init__.py             # translate, download, SSE, registers OS routes
+│   │   └── opensubtitles_routes.py # OpenSubtitles proxy routes
+│   └── services/
+│       ├── translation.py
+│       ├── subtitle_parser.py
+│       ├── opensubtitles_client.py # Login, search, download (server-side)
+│       └── opensubtitles_lang.py   # UI language → OpenSubtitles codes
+├── requirements.txt
+└── tests/
     ├── conftest.py
     ├── test_errors.py
     ├── test_health_and_languages.py
-    └── test_translate_and_download.py
+    ├── test_translate_and_download.py
+    └── test_opensubtitles.py
 ```
 
 ## Notes
-- The backend stores translated files temporarily for download and cleans them up after a few minutes.
-- For production, use a WSGI server (e.g., Gunicorn) and secure the API.
-- You can extend the app to support more formats, authentication, or other translation providers.
+
+- The backend stores **fetched** OpenSubtitles files and **translated** outputs temporarily under the system temp directory; translated downloads are scheduled for cleanup after a few minutes. Fetched temp files are removed after a successful translate.
+- OpenSubtitles has **rate limits and download quotas**; see their documentation and your account on opensubtitles.com.
+- For production, use a WSGI server (e.g. Gunicorn), secure the API, and manage secrets via the environment or a secrets manager—not a committed `.env`.
 
 ## License
+
 MIT License
