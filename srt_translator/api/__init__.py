@@ -34,7 +34,7 @@ translation_progress = {}
 def _ass_pinyin_line(pinyin_plain: str) -> str:
     """Smaller font for pinyin in ASS; reset style after."""
     escaped = pinyin_plain.replace('\\', '\\\\')
-    return f"{{\\fs15}}{escaped}{{\\r}}"
+    return f"{{\\fs10}}{escaped}{{\\r}}"
 
 # Routes will be registered here
 # @api_bp.route('/health')

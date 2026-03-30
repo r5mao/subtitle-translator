@@ -117,6 +117,39 @@ label {
     box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
+.os-search-row {
+    display: flex;
+    align-items: stretch;
+    gap: 12px;
+    margin-top: 6px;
+}
+
+.os-search-row .os-query-input {
+    flex: 1;
+    min-width: 0;
+    margin-top: 0;
+}
+
+.os-search-row .os-search-btn {
+    width: auto;
+    margin-top: 0;
+    flex-shrink: 0;
+    padding-left: 20px;
+    padding-right: 20px;
+    white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+    .os-search-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .os-search-row .os-search-btn {
+        width: 100%;
+    }
+}
+
 .inline-check {
     display: flex;
     align-items: center;
@@ -245,6 +278,10 @@ label {
     align-items: center;
     justify-content: space-between;
     gap: 14px;
+}
+
+.os-pager[hidden] {
+    display: none !important;
 }
 
 .os-pager-label {

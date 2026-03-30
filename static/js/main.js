@@ -137,6 +137,8 @@ function syncSubtitleSourcePanels() {
 sourceSearch.addEventListener('change', syncSubtitleSourcePanels);
 sourceUpload.addEventListener('change', syncSubtitleSourcePanels);
 
+syncSubtitleSourcePanels();
+
 function languageCounts(rows) {
     const m = new Map();
     for (const r of rows) {

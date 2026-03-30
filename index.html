@@ -17,25 +17,27 @@
                 <span class="label-like">Subtitle source</span>
                 <div class="source-mode-toggle" role="radiogroup" aria-label="Subtitle source">
                     <label class="source-mode-option">
-                        <input type="radio" name="subtitleSource" id="sourceSearch" value="search">
+                        <input type="radio" name="subtitleSource" id="sourceSearch" value="search" checked>
                         Search OpenSubtitles
                     </label>
                     <label class="source-mode-option">
-                        <input type="radio" name="subtitleSource" id="sourceUpload" value="upload" checked>
+                        <input type="radio" name="subtitleSource" id="sourceUpload" value="upload">
                         Upload file
                     </label>
                 </div>
                 <p class="hint-text" id="opensubtitlesHint" hidden></p>
             </div>
 
-            <div class="form-group" id="searchPanel" hidden>
+            <div class="form-group" id="searchPanel">
                 <label for="osQuery">Movie or show title</label>
-                <input type="text" id="osQuery" class="text-input" placeholder="e.g. The Matrix" autocomplete="off">
+                <div class="os-search-row">
+                    <input type="text" id="osQuery" class="text-input os-query-input" placeholder="e.g. The Matrix" autocomplete="off">
+                    <button type="button" class="secondary-btn os-search-btn" id="osSearchBtn">Search subtitles</button>
+                </div>
                 <label class="inline-check" style="margin-top:12px;">
                     <input type="checkbox" id="osAnyLanguage">
                     Search all languages (ignore Original Language filter for search)
                 </label>
-                <button type="button" class="secondary-btn" id="osSearchBtn">Search subtitles</button>
                 <div id="osSearchStatus" class="hint-text" aria-live="polite"></div>
                 <div id="osLangChips" class="lang-chips" hidden></div>
                 <div class="os-table-wrap">
@@ -68,7 +70,7 @@
                 </div>
             </div>
 
-            <div class="form-group" id="uploadPanel">
+            <div class="form-group" id="uploadPanel" hidden>
                 <label for="srtFile">Select Subtitle File (SRT, ASS, SSA, SUB):</label>
                 <div class="file-input-wrapper">
                     <input type="file" id="srtFile" name="srtFile" accept=".srt,.ass,.ssa,.sub" class="file-input">
