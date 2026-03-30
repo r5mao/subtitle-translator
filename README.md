@@ -54,6 +54,12 @@ Optional:
 OPENSUBTITLES_USER_AGENT=YourAppName 1.0
 ```
 
+**Movie posters in search results:** If OpenSubtitles does not return image URLs, you can set a [TMDb](https://www.themoviedb.org/settings/api) API key so the server can resolve posters from `tmdb_id` on each result:
+
+```
+TMDB_API_KEY=your_tmdb_v3_key
+```
+
 The app loads `.env` from the project root inside `create_app()`, so variables are available **even if your shell’s current directory is not the project folder**.
 
 **Security:** Never expose these values in the browser or commit `.env` to git (it should stay in `.gitignore`).
@@ -67,6 +73,8 @@ python app.py
 ```
 
 The app and API are available at **http://localhost:5000/** (Flask serves `index.html` at `/` and static files under `/static/`). This is the simplest way to run everything.
+
+If translate shows **Failed to fetch**, the browser never reached Flask (wrong URL, page opened as `file://`, or **HTTPS** page calling **HTTP** API). Use the URL above or set the `subtitle-translator-api-base` meta tag to your Flask origin.
 
 ### 2. Optional: separate static server
 
@@ -85,6 +93,7 @@ To force a different API origin, uncomment and set the meta tag in `index.html`:
 - Press **Enter** in the title field to run the same search as the **Search subtitles** button (Enter does **not** start translation).
 - Use **rows per page** and **Previous** / **Next** to page through OpenSubtitles results.
 - After you **Select** a row, the app fetches that subtitle server-side. Click **Translate Subtitles**, confirm in the dialog, then translation runs (same pipeline as an upload).
+- Search result posters are loaded through **`GET /api/opensubtitles/poster-image`** (same origin) so CDN hotlink limits are less likely to block thumbnails.
 
 ## API Endpoints
 
@@ -94,6 +103,7 @@ To force a different API origin, uncomment and set the meta tag in `index.html`:
 | `GET` | `/api/languages` | Supported translation languages |
 | `GET` | `/api/task` | New UUID for translation progress (SSE) |
 | `GET` | `/api/opensubtitles/status` | `{ "configured": true/false }` — credentials present |
+| `GET` | `/api/opensubtitles/poster-image` | Query: `url` — HTTPS image URL (allowlisted hosts only); proxies bytes for UI thumbnails |
 | `POST` | `/api/opensubtitles/search` | JSON: `query`, optional `language` (UI code), optional `page`, optional `perPage` (`10`, `25`, `50`, or `100`; default `25`). Response includes `results`, `page`, `perPage`, `totalPages`, `totalCount`. |
 | `POST` | `/api/opensubtitles/fetch` | JSON: `file_id` — downloads subtitle to a temp file, returns `fetchedId` |
 | `POST` | `/api/translate` | Multipart: `sourceLanguage`, `targetLanguage`, `dualLanguage`, `taskId`, and **either** `srtFile` **or** `fetchedId` |

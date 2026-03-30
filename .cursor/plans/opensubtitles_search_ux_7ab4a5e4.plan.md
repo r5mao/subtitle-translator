@@ -126,6 +126,16 @@ A practical upgrade after v1: combine **title search** with optional **IMDb ID**
 - Add tests with **mocked** HTTP responses for search + download (no real credentials in CI), similar to `[tests/test_translate_and_download.py](c:/Users/ryanm/OneDrive/Documents/projects/subtitle-translator/tests/test_translate_and_download.py)`.
 - Document required env vars in README or `.env.example` (only if you already maintain one — otherwise a short comment in `[config.py](c:/Users/ryanm/OneDrive/Documents/projects/subtitle-translator/srt_translator/config.py)` is enough per your preference).
 
+## Search results table design (approved)
+
+User confirmed the **mockup** as the target layout for rows that include movie posters:
+
+- **First column (“Title / release”)**: horizontal row with a **small portrait poster** (~48×72, rounded) on the **left**; **title / year / episode** and muted **release / filename** lines on the **right** (`.os-title-cell`, `.os-poster-thumb`, `.os-title-cell-text`).
+- **No poster URL**: show a **gray placeholder** block matching thumb size (`.os-poster-placeholder`) so alignment stays consistent.
+- **Other columns**: Language, Info, Select — unchanged relative to a standard results table.
+
+Implementation in the app should match this; if thumbnails are blank, treat as **data** (`posterUrl`) or **poster-image proxy** behavior, not a different layout.
+
 ## Summary
 
 - **UX**: Radio/tabs for **Search vs Upload** → search UI + results → **one** “subtitle ready” state → existing language + translate + download flow.

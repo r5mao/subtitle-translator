@@ -351,17 +351,20 @@ label {
     flex-shrink: 0;
     width: 48px;
     height: 72px;
-    border-radius: 6px;
+    border-radius: 8px;
     object-fit: cover;
     background: #e8eaf0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 .os-poster-placeholder {
     flex-shrink: 0;
     width: 48px;
     height: 72px;
-    border-radius: 6px;
+    border-radius: 8px;
     background: linear-gradient(135deg, #e8eaf0 0%, #d8dce6 100%);
+    border: 1px solid #d0d4de;
+    box-sizing: border-box;
 }
 
 .os-title-cell-text {

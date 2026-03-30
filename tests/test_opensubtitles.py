@@ -1,5 +1,6 @@
 import os
 import tempfile
+import urllib.parse
 import uuid
 
 import pytest
@@ -302,3 +303,174 @@ def test_flatten_poster_protocol_relative_img_url():
     }
     rows = flatten_subtitle_results(payload)
     assert rows[0]["posterUrl"] == "https://cdn.example/p/a.jpg"
+
+
+def test_flatten_poster_relative_path_on_opensubtitles_com():
+    from srt_translator.services.opensubtitles_client import flatten_subtitle_results
+
+    payload = {
+        "data": [
+            {
+                "type": "subtitle",
+                "attributes": {
+                    "language": "en",
+                    "files": [{"file_id": 1, "file_name": "a.srt"}],
+                    "related_links": {"img_url": "/pictures/posters/abc.jpg"},
+                },
+            }
+        ]
+    }
+    rows = flatten_subtitle_results(payload)
+    assert rows[0]["posterUrl"] == "https://www.opensubtitles.com/pictures/posters/abc.jpg"
+
+
+def test_flatten_poster_deep_nested_string():
+    from srt_translator.services.opensubtitles_client import flatten_subtitle_results
+
+    payload = {
+        "data": [
+            {
+                "type": "subtitle",
+                "attributes": {
+                    "language": "en",
+                    "files": [{"file_id": 1, "file_name": "a.srt"}],
+                    "feature_details": {
+                        "movie_name": "X",
+                        "nested": {"note": "see https://s9.osdb.link/features/1/2/3/z.jpg"},
+                    },
+                },
+            }
+        ]
+    }
+    rows = flatten_subtitle_results(payload)
+    assert rows[0]["posterUrl"] == "https://s9.osdb.link/features/1/2/3/z.jpg"
+
+
+def test_flatten_poster_tmdb_fallback(monkeypatch):
+    import json
+
+    import urllib.request
+
+    from srt_translator.services.opensubtitles_client import flatten_subtitle_results
+
+    monkeypatch.setenv("TMDB_API_KEY", "test-tmdb-key")
+
+    class FakeResp:
+        def read(self):
+            return json.dumps({"posters": [{"file_path": "/abc.jpg"}]}).encode("utf-8")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: FakeResp())
+
+    payload = {
+        "data": [
+            {
+                "type": "subtitle",
+                "attributes": {
+                    "language": "en",
+                    "files": [{"file_id": 1, "file_name": "a.srt"}],
+                    "feature_details": {"movie_name": "X", "tmdb_id": 550},
+                },
+            }
+        ]
+    }
+    rows = flatten_subtitle_results(payload)
+    assert rows[0]["posterUrl"] == "https://image.tmdb.org/t/p/w185/abc.jpg"
+
+
+def test_poster_image_rejects_disallowed_host(client):
+    bad = urllib.parse.quote("https://evil.example.com/poster.jpg", safe="")
+    resp = client.get(f"/api/opensubtitles/poster-image?url={bad}")
+    assert resp.status_code == 400
+    err = (resp.get_json() or {}).get("error", "").lower()
+    assert "host" in err or "not allowed" in err
+
+
+def test_poster_image_requires_url(client):
+    resp = client.get("/api/opensubtitles/poster-image")
+    assert resp.status_code == 400
+
+
+def test_poster_image_proxies_allowed_host(client, monkeypatch):
+    import urllib.request
+
+    from srt_translator.api import opensubtitles_routes as routes_mod
+
+    class FakeResp:
+        headers = {"Content-Type": "image/jpeg"}
+
+        def read(self, n=65536):
+            if getattr(self, "_done", False):
+                return b""
+            self._done = True
+            return b"\xff\xd8\xff\xe0"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: FakeResp())
+    monkeypatch.setattr(routes_mod, "_POSTER_TIMEOUT_SEC", 5)
+
+    u = urllib.parse.quote("https://s9.osdb.link/features/1/2/3/x.jpg", safe="")
+    resp = client.get(f"/api/opensubtitles/poster-image?url={u}")
+    assert resp.status_code == 200
+    assert resp.data.startswith(b"\xff\xd8\xff")
+    assert "image" in (resp.headers.get("Content-Type") or "").lower()
+
+
+def test_poster_image_allows_cloudfront(client, monkeypatch):
+    import urllib.request
+
+    from srt_translator.api import opensubtitles_routes as routes_mod
+
+    class FakeResp:
+        headers = {"Content-Type": "image/jpeg"}
+
+        def read(self, n=65536):
+            if getattr(self, "_done", False):
+                return b""
+            self._done = True
+            return b"\xff\xd8\xff"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: FakeResp())
+    monkeypatch.setattr(routes_mod, "_POSTER_TIMEOUT_SEC", 5)
+
+    u = urllib.parse.quote("https://d111111abcdef8.cloudfront.net/out/poster.jpg", safe="")
+    resp = client.get(f"/api/opensubtitles/poster-image?url={u}")
+    assert resp.status_code == 200
+    assert resp.data.startswith(b"\xff\xd8\xff")
+
+
+def test_subtitles_search_retries_without_include_on_400(monkeypatch):
+    from srt_translator.services.opensubtitles_client import OpenSubtitlesClient, OpenSubtitlesError
+
+    calls: list[tuple] = []
+
+    def fake_request(self, method, path, *, query=None, json_body=None, retry_login=True):
+        calls.append((method, path, dict(query or {})))
+        if len(calls) == 1:
+            raise OpenSubtitlesError("OpenSubtitles request failed (400): bad request")
+        return {"data": []}
+
+    monkeypatch.setattr(OpenSubtitlesClient, "login", lambda self, force=False: None)
+    monkeypatch.setattr(OpenSubtitlesClient, "_request", fake_request)
+    c = OpenSubtitlesClient(api_key="k", username="u", password="p")
+    out = c.search("matrix", page=1, per_page=25)
+    assert out == {"data": []}
+    assert len(calls) == 2
+    assert calls[0][2].get("include") == "feature"
+    assert "include" not in calls[1][2]

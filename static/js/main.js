@@ -283,10 +283,19 @@ function normalizeHttpUrl(raw) {
     return /^https?:\/\//i.test(s) ? s : '';
 }
 
+/** Same-origin proxy avoids CDN hotlink / referrer blocks on poster thumbnails. */
+function posterProxySrc(remoteUrl) {
+    const base = (API || '').replace(/\/$/, '');
+    const q = encodeURIComponent(remoteUrl);
+    return `${base}/api/opensubtitles/poster-image?url=${q}`;
+}
+
 function titleCellWithPoster(r) {
     const url = normalizeHttpUrl(r.posterUrl);
-    const posterHtml = url
-        ? `<img class="os-poster-thumb" src="${attrEscapeUrl(url)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
+    const useProxy = url && /^https?:\/\//i.test(url);
+    const src = useProxy ? posterProxySrc(url) : '';
+    const posterHtml = src
+        ? `<img class="os-poster-thumb" src="${attrEscapeUrl(src)}" alt="" loading="lazy">`
         : '<span class="os-poster-placeholder" aria-hidden="true"></span>';
     return `<div class="os-title-cell">${posterHtml}<div class="os-title-cell-text">${titleCell(r)}</div></div>`;
 }
@@ -721,7 +730,17 @@ async function runTranslation() {
         } catch {
             /* plain text */
         }
-        errorMessage.textContent = `Error: ${msg}. Please check your file format (SRT, ASS, SSA, SUB) and try again.`;
+        const networkFailure =
+            error instanceof TypeError ||
+            msg === 'Failed to fetch' ||
+            /networkerror when attempting to fetch resource/i.test(msg) ||
+            msg.includes('Lost connection to progress server');
+        if (networkFailure) {
+            errorMessage.textContent =
+                'Could not reach the translation server. Open this app at http://127.0.0.1:5000/ after running python app.py (do not open index.html as a file:// page). If you use another dev port or HTTPS, set the subtitle-translator-api-base meta tag in index.html to your Flask URL (e.g. http://127.0.0.1:5000). Note: an HTTPS page cannot call an HTTP API (mixed content).';
+        } else {
+            errorMessage.textContent = `Error: ${msg}. Please check your file format (SRT, ASS, SSA, SUB) and try again.`;
+        }
         errorMessage.style.display = 'block';
         progressFill.style.width = '0%';
     } finally {

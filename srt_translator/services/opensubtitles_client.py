@@ -6,6 +6,7 @@ import io
 import json
 import logging
 import os
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -174,7 +175,17 @@ class OpenSubtitlesClient:
         }
         if languages.strip():
             q["languages"] = languages.strip()
-        return self._request("GET", "/api/v1/subtitles", query=q)
+        try:
+            return self._request("GET", "/api/v1/subtitles", query=q)
+        except OpenSubtitlesError as e:
+            if " (400)" in str(e) and q.get("include"):
+                logger.warning(
+                    "OpenSubtitles GET /subtitles returned 400 with include=%s; retrying without include",
+                    q.get("include"),
+                )
+                q2 = {k: v for k, v in q.items() if k != "include"}
+                return self._request("GET", "/api/v1/subtitles", query=q2)
+            raise
 
     def request_download_link(self, file_id: str) -> tuple[str, str]:
         """Return (download_url, suggested_file_name)."""
@@ -307,7 +318,109 @@ def _looks_like_image_url(url: str) -> bool:
         return True
     if "image.tmdb.org" in url.lower():
         return True
+    if "/pictures/" in path or "/posters/" in path or "/poster" in path or "/img/" in path:
+        return True
     return False
+
+
+_IMG_URL_IN_TEXT_RE = re.compile(
+    r"https?://[^\s\"'<>]+?(?:\.(?:jpg|jpeg|png|webp|gif)|/features/[^\s\"'<>]+)",
+    re.IGNORECASE,
+)
+
+
+def _maybe_absolutize_opensubtitles_image_url(u: Optional[str]) -> Optional[str]:
+    """Turn site-relative poster paths into absolute https URLs."""
+    if not u or not isinstance(u, str):
+        return None
+    s = u.strip()
+    if s.startswith("//"):
+        s = "https:" + s
+    if s.startswith("/") and "/../" not in s:
+        low = s.lower()
+        if (
+            any(low.endswith(ext) for ext in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".jfif"))
+            or "/pictures/" in low
+            or "/posters/" in low
+            or "/poster" in low
+            or "/img/" in low
+        ):
+            return "https://www.opensubtitles.com" + s
+    return _normalize_media_url(s)
+
+
+def _deep_find_image_url_in_payload(attr: dict[str, Any], feat: dict[str, Any], max_depth: int = 7) -> Optional[str]:
+    """Last-resort: scan nested JSON for strings that look like image URLs."""
+
+    def walk(obj: Any, depth: int) -> Optional[str]:
+        if depth > max_depth:
+            return None
+        if isinstance(obj, str):
+            s = obj.strip()
+            u = _normalize_media_url(s)
+            if u and _looks_like_image_url(u):
+                return u
+            m = _IMG_URL_IN_TEXT_RE.search(s)
+            if m:
+                u2 = _normalize_media_url(m.group(0))
+                if u2:
+                    return u2
+            return None
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if isinstance(k, str) and "password" in k.lower():
+                    continue
+                found = walk(v, depth + 1)
+                if found:
+                    return found
+        if isinstance(obj, list):
+            for it in obj:
+                found = walk(it, depth + 1)
+                if found:
+                    return found
+        return None
+
+    for root in (feat, attr):
+        found = walk(root, 0)
+        if found:
+            return found
+    return None
+
+
+def _tmdb_poster_url_for_id(tmdb_raw: Any, cache: dict[int, Optional[str]]) -> Optional[str]:
+    """Optional poster via TMDb when OpenSubtitles only provides tmdb_id. Uses TMDB_API_KEY env."""
+    api_key = (os.environ.get("TMDB_API_KEY") or "").strip()
+    if not api_key:
+        return None
+    try:
+        tid = int(tmdb_raw)
+    except (TypeError, ValueError):
+        return None
+    if tid <= 0:
+        return None
+    if tid in cache:
+        return cache[tid]
+    cache[tid] = None
+    qs = urllib.parse.urlencode({"api_key": api_key})
+    url = f"https://api.themoviedb.org/3/movie/{tid}/images?{qs}"
+    req = urllib.request.Request(
+        url,
+        headers={"Accept": "application/json", "User-Agent": DEFAULT_USER_AGENT},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            payload = json.loads(resp.read().decode("utf-8", errors="replace"))
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError, json.JSONDecodeError, ValueError) as e:
+        logger.debug("TMDB movie images %s: %s", tid, e)
+        return None
+    posters = payload.get("posters") if isinstance(payload, dict) else None
+    if isinstance(posters, list) and posters:
+        fp = posters[0].get("file_path") if isinstance(posters[0], dict) else None
+        if isinstance(fp, str) and fp.startswith("/"):
+            cache[tid] = f"https://image.tmdb.org/t/p/w185{fp}"
+            return cache[tid]
+    return None
 
 
 def _coerce_related_links(raw: Any) -> Any:
@@ -327,6 +440,18 @@ def _coerce_related_links(raw: Any) -> Any:
     return raw
 
 
+def _scalar_to_poster_url(val: Any) -> Optional[str]:
+    """Accept absolute http(s) URLs or site-relative /... image paths."""
+    if val is None:
+        return None
+    if isinstance(val, str):
+        u = _normalize_media_url(val)
+        if u:
+            return u
+        return _maybe_absolutize_opensubtitles_image_url(val)
+    return None
+
+
 def _poster_from_related_links_block(rl: Any) -> Optional[str]:
     rl = _coerce_related_links(rl)
     if isinstance(rl, dict):
@@ -342,21 +467,21 @@ def _poster_from_related_links_block(rl: Any) -> Optional[str]:
             "thumb",
             "cover",
         ):
-            u = _normalize_media_url(rl.get(key))
+            u = _scalar_to_poster_url(rl.get(key))
             if u:
                 return u
         for v in rl.values():
-            u = _normalize_media_url(v)
+            u = _scalar_to_poster_url(v)
             if u and _looks_like_image_url(u):
                 return u
     if isinstance(rl, list):
         for item in rl:
             if isinstance(item, dict):
                 for key in ("img_url", "image_url", "imgUrl", "imageUrl"):
-                    u = _normalize_media_url(item.get(key))
+                    u = _scalar_to_poster_url(item.get(key))
                     if u:
                         return u
-                u = _normalize_media_url(item.get("url"))
+                u = _scalar_to_poster_url(item.get("url"))
                 if u and _looks_like_image_url(u):
                     return u
             u = _poster_from_related_links_block(item)
@@ -393,7 +518,7 @@ def _poster_url_from_subtitle_attributes(
         "poster",
     ):
         for src in (attr, feat):
-            u = _normalize_media_url(src.get(key))
+            u = _scalar_to_poster_url(src.get(key))
             if u:
                 return u
 
@@ -463,6 +588,7 @@ def flatten_subtitle_results(
         return rows
 
     included_index = _included_resource_index(api_json.get("included"))
+    tmdb_poster_cache: dict[int, Optional[str]] = {}
 
     for item in items:
         if not isinstance(item, dict):
@@ -500,6 +626,15 @@ def flatten_subtitle_results(
         poster_url = _poster_from_jsonapi_relationships(item, included_index)
         if not poster_url:
             poster_url = _poster_url_from_subtitle_attributes(attr, feat)
+        if not poster_url:
+            poster_url = _deep_find_image_url_in_payload(attr, feat)
+        if poster_url:
+            poster_url = _maybe_absolutize_opensubtitles_image_url(poster_url) or poster_url
+        if not poster_url:
+            poster_url = _tmdb_poster_url_for_id(
+                feat.get("tmdb_id") or feat.get("parent_tmdb_id"),
+                tmdb_poster_cache,
+            )
 
         for f in files:
             if not isinstance(f, dict):
