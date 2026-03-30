@@ -282,7 +282,21 @@ function normalizeHttpUrl(raw) {
     let s = String(raw).trim();
     if (!s) return '';
     if (s.startsWith('//')) s = `https:${s}`;
-    return /^https?:\/\//i.test(s) ? s : '';
+    if (/^https?:\/\//i.test(s)) return s;
+    /* Match server _maybe_absolutize_opensubtitles_image_url so relative poster paths still proxy. */
+    if (s.startsWith('/') && !s.includes('/../')) {
+        const low = s.toLowerCase().split('?', 1)[0];
+        if (
+            /\.(jpe?g|png|webp|gif|jfif)$/i.test(low) ||
+            low.includes('/pictures/') ||
+            low.includes('/posters/') ||
+            low.includes('/poster') ||
+            low.includes('/img/')
+        ) {
+            return `https://www.opensubtitles.com${s}`;
+        }
+    }
+    return '';
 }
 
 /** Same-origin proxy avoids CDN hotlink / referrer blocks on poster thumbnails. */
@@ -327,7 +341,7 @@ function filterAndRenderResults() {
         if (isSelected) tr.classList.add('os-row-selected');
         const btnLabel = isFetching ? '…' : isSelected ? 'Selected' : 'Select';
         tr.innerHTML = `
-            <td>${titleCell(r)}</td>
+            <td>${titleCellWithPoster(r)}</td>
             <td>${esc(r.languageName || r.language || '')}</td>
             <td class="cell-muted">${esc(rowInfo(r))}</td>
             <td><button type="button" class="os-select-btn" data-file-id="${esc(r.fileId)}" aria-pressed="${isSelected ? 'true' : 'false'}">${btnLabel}</button></td>

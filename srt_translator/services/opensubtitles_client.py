@@ -387,6 +387,35 @@ def _deep_find_image_url_in_payload(attr: dict[str, Any], feat: dict[str, Any], 
     return None
 
 
+def _tmdb_first_poster_from_images_payload(payload: Any) -> Optional[str]:
+    posters = payload.get("posters") if isinstance(payload, dict) else None
+    if isinstance(posters, list) and posters:
+        fp = posters[0].get("file_path") if isinstance(posters[0], dict) else None
+        if isinstance(fp, str) and fp.startswith("/"):
+            return f"https://image.tmdb.org/t/p/w185{fp}"
+    return None
+
+
+def _tmdb_fetch_images_payload(tid: int, kind: str, api_key: str) -> Optional[dict[str, Any]]:
+    qs = urllib.parse.urlencode({"api_key": api_key})
+    url = f"https://api.themoviedb.org/3/{kind}/{tid}/images?{qs}"
+    req = urllib.request.Request(
+        url,
+        headers={"Accept": "application/json", "User-Agent": DEFAULT_USER_AGENT},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            raw = json.loads(resp.read().decode("utf-8", errors="replace"))
+    except urllib.error.HTTPError as e:
+        logger.debug("TMDB %s images %s: HTTP %s", kind, tid, e.code)
+        return None
+    except (urllib.error.URLError, OSError, json.JSONDecodeError, ValueError) as e:
+        logger.debug("TMDB %s images %s: %s", kind, tid, e)
+        return None
+    return raw if isinstance(raw, dict) else None
+
+
 def _tmdb_poster_url_for_id(tmdb_raw: Any, cache: dict[int, Optional[str]]) -> Optional[str]:
     """Optional poster via TMDb when OpenSubtitles only provides tmdb_id. Uses TMDB_API_KEY env."""
     api_key = (os.environ.get("TMDB_API_KEY") or "").strip()
@@ -400,26 +429,15 @@ def _tmdb_poster_url_for_id(tmdb_raw: Any, cache: dict[int, Optional[str]]) -> O
         return None
     if tid in cache:
         return cache[tid]
+    for kind in ("movie", "tv"):
+        payload = _tmdb_fetch_images_payload(tid, kind, api_key)
+        if not payload:
+            continue
+        u = _tmdb_first_poster_from_images_payload(payload)
+        if u:
+            cache[tid] = u
+            return u
     cache[tid] = None
-    qs = urllib.parse.urlencode({"api_key": api_key})
-    url = f"https://api.themoviedb.org/3/movie/{tid}/images?{qs}"
-    req = urllib.request.Request(
-        url,
-        headers={"Accept": "application/json", "User-Agent": DEFAULT_USER_AGENT},
-        method="GET",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=6) as resp:
-            payload = json.loads(resp.read().decode("utf-8", errors="replace"))
-    except (urllib.error.HTTPError, urllib.error.URLError, OSError, json.JSONDecodeError, ValueError) as e:
-        logger.debug("TMDB movie images %s: %s", tid, e)
-        return None
-    posters = payload.get("posters") if isinstance(payload, dict) else None
-    if isinstance(posters, list) and posters:
-        fp = posters[0].get("file_path") if isinstance(posters[0], dict) else None
-        if isinstance(fp, str) and fp.startswith("/"):
-            cache[tid] = f"https://image.tmdb.org/t/p/w185{fp}"
-            return cache[tid]
     return None
 
 

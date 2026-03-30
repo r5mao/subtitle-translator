@@ -346,6 +346,60 @@ def test_flatten_poster_deep_nested_string():
     assert rows[0]["posterUrl"] == "https://s9.osdb.link/features/1/2/3/z.jpg"
 
 
+def test_flatten_poster_tmdb_falls_back_to_tv_when_movie_has_no_posters(monkeypatch):
+    import json
+
+    import urllib.request
+
+    from srt_translator.services.opensubtitles_client import flatten_subtitle_results
+
+    monkeypatch.setenv("TMDB_API_KEY", "k")
+    calls: list[str] = []
+
+    def fake_urlopen(req, *a, **k):
+        u = getattr(req, "full_url", None) or req.get_full_url()
+        calls.append(u)
+
+        class R:
+            def __init__(self, body: bytes):
+                self._body = body
+
+            def read(self):
+                return self._body
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        if "/movie/" in u:
+            return R(json.dumps({"posters": []}).encode("utf-8"))
+        if "/tv/" in u:
+            return R(json.dumps({"posters": [{"file_path": "/from-tv.jpg"}]}).encode("utf-8"))
+        raise AssertionError(f"unexpected urlopen url: {u}")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    payload = {
+        "data": [
+            {
+                "type": "subtitle",
+                "attributes": {
+                    "language": "en",
+                    "files": [{"file_id": 1, "file_name": "a.srt"}],
+                    "feature_details": {"movie_name": "Some Show", "tmdb_id": 1399},
+                },
+            }
+        ]
+    }
+    rows = flatten_subtitle_results(payload)
+    assert rows[0]["posterUrl"] == "https://image.tmdb.org/t/p/w185/from-tv.jpg"
+    assert len(calls) == 2
+    assert "/movie/1399/" in calls[0]
+    assert "/tv/1399/" in calls[1]
+
+
 def test_flatten_poster_tmdb_fallback(monkeypatch):
     import json
 
@@ -424,6 +478,135 @@ def test_poster_image_proxies_allowed_host(client, monkeypatch):
     assert resp.status_code == 200
     assert resp.data.startswith(b"\xff\xd8\xff")
     assert "image" in (resp.headers.get("Content-Type") or "").lower()
+
+
+def test_maybe_absolutize_opensubtitles_poster_paths():
+    """Site-relative poster paths must become absolute https URLs for the UI proxy."""
+    from srt_translator.services.opensubtitles_client import _maybe_absolutize_opensubtitles_image_url
+
+    assert (
+        _maybe_absolutize_opensubtitles_image_url("/pictures/posters/x.jpg")
+        == "https://www.opensubtitles.com/pictures/posters/x.jpg"
+    )
+    assert _maybe_absolutize_opensubtitles_image_url("//img.example/a.png") == "https://img.example/a.png"
+    assert _maybe_absolutize_opensubtitles_image_url("https://cdn.example/z.webp") == "https://cdn.example/z.webp"
+    assert _maybe_absolutize_opensubtitles_image_url("/pictures/../evil.jpg") is None
+
+
+def test_tmdb_poster_api_and_cdn_url_construction(monkeypatch):
+    """TMDb images request and resulting image.tmdb.org poster URL must follow a fixed shape."""
+    import json
+
+    import urllib.request
+
+    from srt_translator.services.opensubtitles_client import flatten_subtitle_results
+
+    monkeypatch.setenv("TMDB_API_KEY", "k")
+    seen: list[str] = []
+
+    class FakeResp:
+        def read(self):
+            return json.dumps({"posters": [{"file_path": "/movie/poster1.jpg"}]}).encode("utf-8")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def capture_urlopen(req, *a, **k):
+        seen.append(getattr(req, "full_url", None) or req.get_full_url())
+        return FakeResp()
+
+    monkeypatch.setattr(urllib.request, "urlopen", capture_urlopen)
+
+    payload = {
+        "data": [
+            {
+                "type": "subtitle",
+                "attributes": {
+                    "language": "en",
+                    "files": [{"file_id": 1, "file_name": "a.srt"}],
+                    "feature_details": {"movie_name": "X", "tmdb_id": 999},
+                },
+            }
+        ]
+    }
+    rows = flatten_subtitle_results(payload)
+    assert len(seen) == 1
+    assert seen[0].startswith("https://api.themoviedb.org/3/movie/999/images?")
+    assert "api_key=k" in seen[0]
+    assert rows[0]["posterUrl"] == "https://image.tmdb.org/t/p/w185/movie/poster1.jpg"
+
+
+def test_flatten_poster_from_included_movie_resource():
+    """Shows may sideload poster on type=movie via relationships.movie."""
+    from srt_translator.services.opensubtitles_client import flatten_subtitle_results
+
+    payload = {
+        "data": [
+            {
+                "type": "subtitle",
+                "relationships": {"movie": {"data": {"type": "movie", "id": "77"}}},
+                "attributes": {
+                    "language": "en",
+                    "files": [{"file_id": 1, "file_name": "ep.srt"}],
+                    "feature_details": {"movie_name": "Some Show", "season_number": 1, "episode_number": 2},
+                },
+            }
+        ],
+        "included": [
+            {
+                "type": "movie",
+                "id": "77",
+                "attributes": {
+                    "poster_url": "https://s9.osdb.link/features/show/77.jpg",
+                    "feature_details": {},
+                },
+            }
+        ],
+    }
+    rows = flatten_subtitle_results(payload)
+    assert rows[0]["posterUrl"] == "https://s9.osdb.link/features/show/77.jpg"
+
+
+def test_flatten_poster_from_included_parent_resource():
+    """Episode rows may link poster via relationships.parent."""
+    from srt_translator.services.opensubtitles_client import flatten_subtitle_results
+
+    payload = {
+        "data": [
+            {
+                "type": "subtitle",
+                "relationships": {"parent": {"data": {"type": "feature", "id": "p1"}}},
+                "attributes": {
+                    "language": "en",
+                    "files": [{"file_id": 1, "file_name": "a.srt"}],
+                    "feature_details": {"movie_name": "Ep Title"},
+                },
+            }
+        ],
+        "included": [
+            {
+                "type": "feature",
+                "id": "p1",
+                "attributes": {"image": "https://img.example/parent-poster.png"},
+            }
+        ],
+    }
+    rows = flatten_subtitle_results(payload)
+    assert rows[0]["posterUrl"] == "https://img.example/parent-poster.png"
+
+
+def test_poster_image_proxy_query_url_construction_roundtrip():
+    """Mirrors static/js/main.js posterProxySrc: path must decode back to the remote poster URL."""
+    api_base = "http://127.0.0.1:5555"
+    remote = "https://s9.osdb.link/features/1/2/3/poster.jpg?token=x&raw=1"
+    q = urllib.parse.quote(remote, safe="")
+    proxy = f"{api_base.rstrip('/')}/api/opensubtitles/poster-image?url={q}"
+    parsed = urllib.parse.urlparse(proxy)
+    qs = urllib.parse.parse_qs(parsed.query, strict_parsing=True)
+    assert urllib.parse.unquote(qs["url"][0]) == remote
 
 
 def test_poster_image_allows_cloudfront(client, monkeypatch):
