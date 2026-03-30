@@ -336,18 +336,33 @@ function filterAndRenderResults() {
     for (const r of rows) {
         const fid = String(r.fileId);
         const tr = document.createElement('tr');
+        tr.classList.add('os-result-row');
         const isSelected = Boolean(fetchedId && selectedOsFileId != null && String(selectedOsFileId) === fid);
         const isFetching = fetchInProgressFileId != null && String(fetchInProgressFileId) === fid;
         if (isSelected) tr.classList.add('os-row-selected');
-        const btnLabel = isFetching ? '…' : isSelected ? 'Selected' : 'Select';
+        if (isFetching) tr.classList.add('os-row-fetching');
+        tr.tabIndex = 0;
+        const rowLabel = r.title || r.fileName || r.release || fid;
+        tr.setAttribute(
+            'aria-label',
+            isFetching
+                ? `Loading subtitle: ${rowLabel}`
+                : isSelected
+                  ? `Selected: ${rowLabel}. Activate to clear selection.`
+                  : `Select subtitle: ${rowLabel}`,
+        );
         tr.innerHTML = `
             <td>${titleCellWithPoster(r)}</td>
             <td>${esc(r.languageName || r.language || '')}</td>
             <td class="cell-muted">${esc(rowInfo(r))}</td>
-            <td><button type="button" class="os-select-btn" data-file-id="${esc(r.fileId)}" aria-pressed="${isSelected ? 'true' : 'false'}">${btnLabel}</button></td>
         `;
-        const btn = tr.querySelector('.os-select-btn');
-        btn.addEventListener('click', () => selectSubtitleFile(r.fileId, r));
+        tr.addEventListener('click', () => selectSubtitleFile(r.fileId, r));
+        tr.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                selectSubtitleFile(r.fileId, r);
+            }
+        });
         osResultsBody.appendChild(tr);
     }
 }
