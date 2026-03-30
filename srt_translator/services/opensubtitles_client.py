@@ -169,6 +169,8 @@ class OpenSubtitlesClient:
             "query": query.strip(),
             "page": str(max(1, page)),
             "per_page": str(max(1, min(100, int(per_page)))),
+            # JSON:API-style sideload so poster/image fields may appear on `included` resources.
+            "include": "feature",
         }
         if languages.strip():
             q["languages"] = languages.strip()
@@ -284,6 +286,168 @@ def _safe_fps(value: Any) -> Optional[float]:
     return None
 
 
+def _normalize_media_url(val: Any) -> Optional[str]:
+    if not isinstance(val, str):
+        return None
+    u = val.strip()
+    if not u:
+        return None
+    if u.startswith("//"):
+        u = "https:" + u
+    if u.lower().startswith(("http://", "https://")):
+        return u
+    return None
+
+
+def _looks_like_image_url(url: str) -> bool:
+    path = url.lower().split("?", 1)[0]
+    if any(path.endswith(ext) for ext in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".jfif")):
+        return True
+    if "osdb.link" in url.lower() and "feature" in url.lower():
+        return True
+    if "image.tmdb.org" in url.lower():
+        return True
+    return False
+
+
+def _coerce_related_links(raw: Any) -> Any:
+    """API may return related_links as dict, list, or JSON string."""
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        s = raw.strip()
+        if not s:
+            return None
+        if s.startswith(("{", "[")):
+            try:
+                return json.loads(s)
+            except json.JSONDecodeError:
+                return None
+        return None
+    return raw
+
+
+def _poster_from_related_links_block(rl: Any) -> Optional[str]:
+    rl = _coerce_related_links(rl)
+    if isinstance(rl, dict):
+        for key in (
+            "img_url",
+            "image_url",
+            "imgUrl",
+            "imageUrl",
+            "poster",
+            "picture_url",
+            "pictureUrl",
+            "thumbnail",
+            "thumb",
+            "cover",
+        ):
+            u = _normalize_media_url(rl.get(key))
+            if u:
+                return u
+        for v in rl.values():
+            u = _normalize_media_url(v)
+            if u and _looks_like_image_url(u):
+                return u
+    if isinstance(rl, list):
+        for item in rl:
+            if isinstance(item, dict):
+                for key in ("img_url", "image_url", "imgUrl", "imageUrl"):
+                    u = _normalize_media_url(item.get(key))
+                    if u:
+                        return u
+                u = _normalize_media_url(item.get("url"))
+                if u and _looks_like_image_url(u):
+                    return u
+            u = _poster_from_related_links_block(item)
+            if u:
+                return u
+    return None
+
+
+def _poster_url_from_subtitle_attributes(
+    attr: dict[str, Any],
+    feat: dict[str, Any],
+) -> Optional[str]:
+    """Poster URL from subtitle (or feature) attribute blobs; schema varies by API version."""
+
+    for block in (
+        attr.get("related_links"),
+        attr.get("relatedLinks"),
+        feat.get("related_links"),
+        feat.get("relatedLinks"),
+    ):
+        u = _poster_from_related_links_block(block)
+        if u:
+            return u
+
+    for key in (
+        "image",
+        "poster_url",
+        "posterUrl",
+        "feature_image",
+        "featureImage",
+        "movie_image",
+        "movieImage",
+        "thumbnail",
+        "poster",
+    ):
+        for src in (attr, feat):
+            u = _normalize_media_url(src.get(key))
+            if u:
+                return u
+
+    return None
+
+
+def _included_resource_index(included: Any) -> dict[tuple[str, str], dict[str, Any]]:
+    out: dict[tuple[str, str], dict[str, Any]] = {}
+    if not isinstance(included, list):
+        return out
+    for inc in included:
+        if not isinstance(inc, dict):
+            continue
+        typ = inc.get("type")
+        iid = inc.get("id")
+        if typ is not None and iid is not None:
+            out[(str(typ), str(iid))] = inc
+    return out
+
+
+def _poster_from_jsonapi_relationships(
+    item: dict[str, Any],
+    included_index: dict[tuple[str, str], dict[str, Any]],
+) -> Optional[str]:
+    rel = item.get("relationships")
+    if not isinstance(rel, dict):
+        return None
+    for rel_name in ("feature", "movie", "parent"):
+        block = rel.get(rel_name)
+        if not isinstance(block, dict):
+            continue
+        data = block.get("data")
+        refs: list[dict[str, Any]] = []
+        if isinstance(data, dict):
+            refs = [data]
+        elif isinstance(data, list):
+            refs = [x for x in data if isinstance(x, dict)]
+        for ref in refs:
+            key = (str(ref.get("type", "")), str(ref.get("id", "")))
+            inc = included_index.get(key)
+            if not inc:
+                continue
+            iattr = inc.get("attributes")
+            if not isinstance(iattr, dict):
+                iattr = {}
+            ifeat = iattr.get("feature_details")
+            if not isinstance(ifeat, dict):
+                ifeat = {}
+            u = _poster_url_from_subtitle_attributes(iattr, ifeat)
+            if u:
+                return u
+    return None
+
+
 def flatten_subtitle_results(
     api_json: dict[str, Any],
     language_names: Optional[dict[str, str]] = None,
@@ -297,6 +461,8 @@ def flatten_subtitle_results(
     items = api_json.get("data")
     if not isinstance(items, list):
         return rows
+
+    included_index = _included_resource_index(api_json.get("included"))
 
     for item in items:
         if not isinstance(item, dict):
@@ -330,6 +496,10 @@ def flatten_subtitle_results(
                 files = [{"file_id": fid, "file_name": attr.get("file_name") or release or f"{title}.{language}.srt"}]
             else:
                 continue
+
+        poster_url = _poster_from_jsonapi_relationships(item, included_index)
+        if not poster_url:
+            poster_url = _poster_url_from_subtitle_attributes(attr, feat)
 
         for f in files:
             if not isinstance(f, dict):
@@ -370,6 +540,7 @@ def flatten_subtitle_results(
                     "hearingImpaired": bool(hi) if hi is not None else None,
                     "machineTranslated": bool(machine) if machine is not None else None,
                     "fromTrusted": bool(trusted) if trusted is not None else None,
+                    "posterUrl": poster_url,
                 }
             )
 

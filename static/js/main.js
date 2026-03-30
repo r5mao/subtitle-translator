@@ -190,6 +190,64 @@ function esc(s) {
     return d.innerHTML;
 }
 
+function attrEscapeUrl(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+/** Map OpenSubtitles subtitle language code to #sourceLanguage option value. */
+const OS_LANG_TO_UI_SOURCE = {
+    en: 'en',
+    es: 'es',
+    fr: 'fr',
+    de: 'de',
+    it: 'it',
+    pt: 'pt',
+    'pt-br': 'pt',
+    'pt-pt': 'pt',
+    ru: 'ru',
+    'zh-cn': 'zh-cn',
+    'zh-tw': 'zh-tw',
+    zh: 'zh-cn',
+    cmn: 'zh-cn',
+    ja: 'ja',
+    ko: 'ko',
+    ar: 'ar',
+    hi: 'hi',
+    nl: 'nl',
+    sv: 'sv',
+    da: 'da',
+    no: 'no',
+    fi: 'fi',
+    pl: 'pl',
+    tr: 'tr',
+    he: 'he',
+};
+
+function opensubtitlesLangToUiSource(code) {
+    if (!code || typeof code !== 'string') return null;
+    const c = code.trim().toLowerCase();
+    if (Object.prototype.hasOwnProperty.call(OS_LANG_TO_UI_SOURCE, c)) {
+        return OS_LANG_TO_UI_SOURCE[c];
+    }
+    if (c.startsWith('pt')) return 'pt';
+    return null;
+}
+
+function applySourceFromOpenSubtitlesRow(langCode) {
+    const v = opensubtitlesLangToUiSource(langCode);
+    if (!v) return;
+    let found = false;
+    for (let i = 0; i < sourceLanguage.options.length; i += 1) {
+        if (sourceLanguage.options[i].value === v) {
+            found = true;
+            break;
+        }
+    }
+    if (!found) return;
+    sourceLanguage.value = v;
+    validateLanguages();
+}
+
 function rowInfo(r) {
     const parts = [];
     const dl = r.downloads;
@@ -215,6 +273,22 @@ function titleCell(r) {
     if (r.release) html += `<div class="cell-muted">${esc(r.release)}</div>`;
     if (r.fileName) html += `<div class="cell-muted">${esc(r.fileName)}</div>`;
     return html || '—';
+}
+
+function normalizeHttpUrl(raw) {
+    if (raw == null) return '';
+    let s = String(raw).trim();
+    if (!s) return '';
+    if (s.startsWith('//')) s = `https:${s}`;
+    return /^https?:\/\//i.test(s) ? s : '';
+}
+
+function titleCellWithPoster(r) {
+    const url = normalizeHttpUrl(r.posterUrl);
+    const posterHtml = url
+        ? `<img class="os-poster-thumb" src="${attrEscapeUrl(url)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
+        : '<span class="os-poster-placeholder" aria-hidden="true"></span>';
+    return `<div class="os-title-cell">${posterHtml}<div class="os-title-cell-text">${titleCell(r)}</div></div>`;
 }
 
 function filterAndRenderResults() {
@@ -279,6 +353,7 @@ async function selectSubtitleFile(fileId, row) {
         fetchedId = data.fetchedId;
         fetchedLabel = data.filename || label;
         selectedOsFileId = fid;
+        applySourceFromOpenSubtitlesRow(row.language);
         osSearchStatus.textContent = '';
     } catch (e) {
         console.error(e);

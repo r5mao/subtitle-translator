@@ -287,6 +287,11 @@ label {
     border: none;
     border-radius: 16px;
     box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+    margin: auto;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
 }
 
 .confirm-dialog::backdrop {
@@ -313,22 +318,55 @@ label {
 
 .confirm-dialog-actions {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 12px;
-    justify-content: flex-end;
+    justify-content: center;
+    align-items: stretch;
+    width: 100%;
 }
 
 .confirm-dialog-actions .secondary-btn {
     margin-top: 0;
-    width: auto;
-    min-width: 100px;
+    flex: 1;
+    min-width: 0;
+    max-width: 200px;
 }
 
 .confirm-dialog-confirm {
-    width: auto;
-    min-width: 120px;
+    flex: 1;
+    min-width: 0;
+    max-width: 200px;
     padding: 14px 22px;
     margin-top: 0;
+}
+
+.os-title-cell {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    min-width: 0;
+}
+
+.os-poster-thumb {
+    flex-shrink: 0;
+    width: 48px;
+    height: 72px;
+    border-radius: 6px;
+    object-fit: cover;
+    background: #e8eaf0;
+}
+
+.os-poster-placeholder {
+    flex-shrink: 0;
+    width: 48px;
+    height: 72px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, #e8eaf0 0%, #d8dce6 100%);
+}
+
+.os-title-cell-text {
+    min-width: 0;
+    flex: 1;
 }
 
 select, input[type="file"] {

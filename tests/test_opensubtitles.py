@@ -45,6 +45,9 @@ class _FakeOpenSubtitlesClient:
                         "fps": 23.976,
                         "files": [{"file_id": 999001, "file_name": "sample_en.srt"}],
                         "feature_details": {"movie_name": "Test Movie", "year": 2020},
+                        "related_links": {
+                            "img_url": "https://example.com/poster/test-movie.jpg",
+                        },
                     },
                 }
             ],
@@ -102,6 +105,7 @@ def test_opensubtitles_search_returns_results(client, os_env_configured, monkeyp
     assert row["language"] == "en"
     assert row["languageName"] == "English"
     assert row["title"] == "Test Movie"
+    assert row["posterUrl"] == "https://example.com/poster/test-movie.jpg"
     assert data["page"] == 1
     assert data["perPage"] == 25
     assert data["totalPages"] == 3
@@ -225,3 +229,76 @@ def test_flatten_subtitle_results_language_name():
     assert len(rows) == 1
     assert rows[0]["language"] == "fr"
     assert rows[0]["languageName"] == "French"
+
+
+def test_flatten_poster_related_links_list():
+    from srt_translator.services.opensubtitles_client import flatten_subtitle_results
+
+    payload = {
+        "data": [
+            {
+                "type": "subtitle",
+                "attributes": {
+                    "language": "en",
+                    "files": [{"file_id": 1, "file_name": "a.srt"}],
+                    "related_links": [
+                        {
+                            "label": "Movie",
+                            "url": "https://www.opensubtitles.com/en/movies/x",
+                            "img_url": "https://s9.osdb.link/features/1/2/3/99.jpg",
+                        },
+                    ],
+                },
+            }
+        ]
+    }
+    rows = flatten_subtitle_results(payload)
+    assert rows[0]["posterUrl"] == "https://s9.osdb.link/features/1/2/3/99.jpg"
+
+
+def test_flatten_poster_from_included_feature():
+    from srt_translator.services.opensubtitles_client import flatten_subtitle_results
+
+    payload = {
+        "data": [
+            {
+                "type": "subtitle",
+                "relationships": {
+                    "feature": {"data": {"type": "feature", "id": "42"}},
+                },
+                "attributes": {
+                    "language": "en",
+                    "files": [{"file_id": 1, "file_name": "a.srt"}],
+                    "feature_details": {"movie_name": "X"},
+                },
+            }
+        ],
+        "included": [
+            {
+                "type": "feature",
+                "id": "42",
+                "attributes": {"image": "https://img.example/poster.png"},
+            }
+        ],
+    }
+    rows = flatten_subtitle_results(payload)
+    assert rows[0]["posterUrl"] == "https://img.example/poster.png"
+
+
+def test_flatten_poster_protocol_relative_img_url():
+    from srt_translator.services.opensubtitles_client import flatten_subtitle_results
+
+    payload = {
+        "data": [
+            {
+                "type": "subtitle",
+                "attributes": {
+                    "language": "en",
+                    "files": [{"file_id": 1, "file_name": "a.srt"}],
+                    "related_links": {"imgUrl": "//cdn.example/p/a.jpg"},
+                },
+            }
+        ]
+    }
+    rows = flatten_subtitle_results(payload)
+    assert rows[0]["posterUrl"] == "https://cdn.example/p/a.jpg"

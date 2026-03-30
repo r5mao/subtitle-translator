@@ -226,7 +226,7 @@ def translate_srt():
                 output_entries = []
                 for orig_dict, trans_entry in zip(parsed, translated_entries):
                     chinese_lines = trans_entry.text_lines
-                    pinyin_lines = [line_to_pinyin(cl) for cl in chinese_lines]
+                    pinyin_lines = [_ass_pinyin_line(line_to_pinyin(cl)) for cl in chinese_lines]
                     combined_lines = orig_dict['text_lines'] + chinese_lines + pinyin_lines
                     output_entries.append({
                         'sequence_number': trans_entry.sequence_number,
@@ -234,21 +234,21 @@ def translate_srt():
                         'end_time': trans_entry.end_time,
                         'text_lines': combined_lines
                     })
-                translated_content = SubtitleParser.to_srt(output_entries)
+                translated_content = SubtitleParser.srt_output_entries_to_minimal_ass(output_entries)
             elif use_pinyin and not dual_language:
                 output_entries = []
                 for trans_entry in translated_entries:
                     new_lines = []
                     for cl in trans_entry.text_lines:
                         new_lines.append(cl)
-                        new_lines.append(line_to_pinyin(cl))
+                        new_lines.append(_ass_pinyin_line(line_to_pinyin(cl)))
                     output_entries.append({
                         'sequence_number': trans_entry.sequence_number,
                         'start_time': trans_entry.start_time,
                         'end_time': trans_entry.end_time,
                         'text_lines': new_lines
                     })
-                translated_content = SubtitleParser.to_srt(output_entries)
+                translated_content = SubtitleParser.srt_output_entries_to_minimal_ass(output_entries)
             elif dual_language:
                 output_entries = []
                 for orig_dict, trans_entry in zip(parsed, translated_entries):
@@ -265,7 +265,10 @@ def translate_srt():
                     {'sequence_number': e.sequence_number, 'start_time': e.start_time, 'end_time': e.end_time, 'text_lines': e.text_lines}
                     for e in translated_entries
                 ])
-            translated_filename = f"{base_name}_{target_lang}{'_dual' if dual_language else ''}.srt"
+            if use_pinyin:
+                translated_filename = f"{base_name}_{target_lang}{'_dual' if dual_language else ''}.ass"
+            else:
+                translated_filename = f"{base_name}_{target_lang}{'_dual' if dual_language else ''}.srt"
         elif fmt == 'ass':
             texts = [d['text'] for d in parsed['dialogues']]
             total_lines = len(texts)

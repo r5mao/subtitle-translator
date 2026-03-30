@@ -1,5 +1,18 @@
 import re
 
+_MINIMAL_ASS_HEADER = """[Script Info]
+Title: Translated
+ScriptType: v4.00+
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+
+
 class SubtitleParser:
     """
     Handles parsing and processing of SRT, ASS, SSA, and SUB subtitle files.
@@ -73,6 +86,31 @@ class SubtitleParser:
             if m:
                 parsed.append({'idx': idx, 'line': line, 'start': m.group(1), 'end': m.group(2), 'text': m.group(3)})
         return {'lines': lines, 'subs': parsed}
+
+    @staticmethod
+    def srt_timestamp_to_ass(srt_ts: str) -> str:
+        """SRT ``HH:MM:SS,mmm`` to ASS ``H:MM:SS.cc`` (centiseconds)."""
+        m = re.match(r"^(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*$", (srt_ts or "").strip())
+        if not m:
+            return "0:00:00.00"
+        h, mi, s, ms = map(int, m.groups())
+        centis = min(99, round(ms / 10.0))
+        return f"{int(h)}:{mi:02d}:{s:02d}.{centis:02d}"
+
+    @staticmethod
+    def srt_output_entries_to_minimal_ass(entries: list) -> str:
+        """
+        Build a playable ASS from SRT-shaped dicts (``start_time``, ``end_time``, ``text_lines``).
+        Multiple ``text_lines`` are joined with ASS line breaks (``\\N``).
+        """
+        lines = [_MINIMAL_ASS_HEADER.rstrip()]
+        for e in entries:
+            start = SubtitleParser.srt_timestamp_to_ass(e["start_time"])
+            end = SubtitleParser.srt_timestamp_to_ass(e["end_time"])
+            text_lines = e.get("text_lines") or []
+            text = "\\N".join(text_lines)
+            lines.append(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{text}")
+        return "\n".join(lines) + "\n"
 
     @staticmethod
     def to_srt(entries: list) -> str:

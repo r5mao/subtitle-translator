@@ -60,10 +60,12 @@ def test_translate_srt_pinyin_non_dual(client, patch_translator):
     assert resp.status_code == 200
     j = resp.get_json()
     assert j['success'] is True
-    assert j['filename'].endswith('_zh-cn-pinyin.srt')
+    assert j['filename'].endswith('_zh-cn-pinyin.ass')
     dl = client.get(j['downloadUrl'])
     assert dl.status_code == 200
     content = dl.data.decode('utf-8')
+    assert 'Dialogue:' in content
+    assert '\\fs15' in content
     assert '你好，世界' in content
     assert 'nǐ' in content and 'hǎo' in content
 
@@ -73,10 +75,12 @@ def test_translate_srt_pinyin_dual(client, patch_translator):
     assert resp.status_code == 200
     j = resp.get_json()
     assert j['success'] is True
-    assert j['filename'].endswith('_zh-cn-pinyin_dual.srt')
+    assert j['filename'].endswith('_zh-cn-pinyin_dual.ass')
     dl = client.get(j['downloadUrl'])
     assert dl.status_code == 200
     content = dl.data.decode('utf-8')
+    assert 'Dialogue:' in content
+    assert '\\fs15' in content
     assert 'Hello world' in content
     assert '你好，世界' in content
     assert 'nǐ' in content
