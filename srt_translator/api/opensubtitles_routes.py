@@ -16,6 +16,8 @@ from srt_translator.services.opensubtitles_client import (
     OpenSubtitlesError,
     OpenSubtitlesNotConfigured,
     distinct_work_suggestions_from_subtitles,
+    filter_subtitle_rows_by_query,
+    filter_work_suggestions_by_query,
     flatten_subtitle_results,
     get_language_name_lookup,
     normalize_opensubtitles_imdb_id,
@@ -175,6 +177,7 @@ def register_opensubtitles_routes(api_bp):
                 imdb_id=imdb_q,
             )
             rows = flatten_subtitle_results(raw, language_names=lang_lookup)
+            rows = filter_subtitle_rows_by_query(rows, query)
             # One API row can expand to several file rows; cap so UI row count matches per_page.
             if len(rows) > per_page:
                 rows = rows[:per_page]
@@ -220,6 +223,7 @@ def register_opensubtitles_routes(api_bp):
                 per_page=_SUGGESTIONS_FETCH_PER_PAGE,
             )
             suggestions = distinct_work_suggestions_from_subtitles(raw, limit=_SUGGESTIONS_MAX)
+            suggestions = filter_work_suggestions_by_query(suggestions, query)
             return jsonify({"suggestions": suggestions})
         except OpenSubtitlesNotConfigured as e:
             return jsonify({"error": str(e)}), 503

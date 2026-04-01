@@ -657,6 +657,314 @@ def _resolve_poster_and_backdrop(
     return poster_url, backdrop_url
 
 
+_QUERY_STOPWORDS = frozenset(
+    {
+        "the",
+        "and",
+        "or",
+        "of",
+        "a",
+        "an",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "is",
+        "it",
+        "as",
+    }
+)
+
+
+def _title_is_placeholder(s: str) -> bool:
+    """OpenSubtitles sometimes returns junk like 'Empty Movie (SubScene)' as title."""
+    sl = (s or "").strip().lower()
+    if not sl:
+        return True
+    if "empty movie" in sl:
+        return True
+    if "placeholder" in sl or "sample title" in sl:
+        return True
+    if "subscene" in sl and ("empty" in sl or "movie" in sl):
+        return True
+    return False
+
+
+def _release_looks_like_tech_strip_tag(s: str) -> bool:
+    """Release string is often a rip label, not a human title."""
+    rl = (s or "").strip().lower()
+    if not rl:
+        return False
+    markers = (
+        "subscene",
+        "yify",
+        "x264",
+        "x265",
+        "h264",
+        "h265",
+        "webrip",
+        "bluray",
+        "dvdrip",
+        "1080p",
+        "720p",
+        "2160p",
+        "hi10p",
+        "remux",
+        "proper",
+        "repack",
+    )
+    return any(m in rl for m in markers)
+
+
+def _first_year_in_text(text: str) -> Optional[int]:
+    """First standalone 19xx/20xx in arbitrary text (filename, movie_name, release)."""
+    if not text:
+        return None
+    for m in re.finditer(r"(?<![0-9])(19\d{2}|20[0-3]\d)(?![0-9])", text):
+        y = int(m.group(1))
+        if 1950 <= y <= 2035:
+            return y
+    return None
+
+
+def _year_from_aligned_movie_name(feat: dict[str, Any], display_title: str) -> Optional[int]:
+    """Use year embedded in movie_name only when that string plausibly describes the same work."""
+    mn = str(feat.get("movie_name") or "").strip()
+    if not mn:
+        return None
+    tl = (display_title or "").strip().lower()
+    mnl = mn.lower()
+    if tl:
+        if tl not in mnl and mnl not in tl and not _text_matches_search(mnl, tl):
+            return None
+    return _first_year_in_text(mn)
+
+
+def _year_from_feature_air_dates(feat: dict[str, Any]) -> Optional[int]:
+    for key in ("series_year", "parent_year", "season_year"):
+        v = feat.get(key)
+        if v is None:
+            continue
+        try:
+            yi = int(v)
+            if 1950 <= yi <= 2035:
+                return yi
+        except (TypeError, ValueError):
+            continue
+    for key in ("air_date", "first_air_date"):
+        v = feat.get(key)
+        if isinstance(v, str) and len(v) >= 4 and v[:4].isdigit():
+            yi = int(v[:4])
+            if 1950 <= yi <= 2035:
+                return yi
+    return None
+
+
+def _pick_display_year(
+    feat: dict[str, Any],
+    api_year: Any,
+    file_name: str,
+    rel_s: str,
+    *,
+    display_title: str = "",
+) -> Any:
+    """
+    OpenSubtitles `feature_details.year` is often wrong (e.g. upload/catalog year). Prefer
+    year from filename, then movie_name when it aligns with the row title (e.g. '2018 - My Mister'),
+    then release, feature title text, air dates, then API year.
+    """
+    result: Any
+    src: str
+    y = _first_year_in_text(str(file_name or ""))
+    if y is not None:
+        result, src = y, "filename"
+    else:
+        y = _year_from_aligned_movie_name(feat, display_title)
+        if y is not None:
+            result, src = y, "movie_name"
+        else:
+            y = _first_year_in_text(str(rel_s or ""))
+            if y is not None:
+                result, src = y, "release"
+            else:
+                y = _first_year_in_text(str(feat.get("title") or ""))
+                if y is not None:
+                    result, src = y, "title"
+                else:
+                    y = _year_from_feature_air_dates(feat)
+                    if y is not None:
+                        result, src = y, "air_dates"
+                    else:
+                        result, src = api_year, "api"
+    # #region agent log
+    try:
+        import json
+        import time
+
+        with open("debug-567c23.log", "a", encoding="utf-8") as _df:
+            _df.write(
+                json.dumps(
+                    {
+                        "sessionId": "567c23",
+                        "hypothesisId": "H1",
+                        "location": "opensubtitles_client._pick_display_year",
+                        "message": "display_year_resolution",
+                        "data": {
+                            "source": src,
+                            "resolved": result,
+                            "api_year": api_year,
+                            "display_title_preview": str(display_title or "")[:80],
+                            "movie_name_preview": str(feat.get("movie_name") or "")[:120],
+                        },
+                        "timestamp": int(time.time() * 1000),
+                    }
+                )
+                + "\n"
+            )
+    except Exception:
+        pass
+    # #endregion
+    return result
+
+
+def _title_hint_from_sub_filename(fname: str) -> str:
+    """Best-effort show/movie name from typical subtitle filenames (e.g. My.Show.S01E01.x264)."""
+    if not fname or not isinstance(fname, str):
+        return ""
+    stem = fname.rsplit(".", 1)[0] if "." in fname else fname
+    tokens = re.split(r"[.\s_]+", stem)
+    words: list[str] = []
+    for t in tokens:
+        if not t:
+            continue
+        if re.match(r"^[Ss]\d{1,2}([Ee]\d{1,2})?([Ee]\d{1,2})?$", t):
+            break
+        if re.match(r"^\d+[xX]\d+$", t):
+            break
+        if re.match(r"^\d{3,4}[pP]$", t, re.IGNORECASE):
+            break
+        if re.match(
+            r"^(x264|x265|h264|h265|webrip|bluray|dvdrip|aac|dts|hdma|atmos)$",
+            t,
+            re.IGNORECASE,
+        ):
+            break
+        if re.match(r"^\d{4}$", t) and words:
+            break
+        words.append(t)
+    return " ".join(words) if words else ""
+
+
+def _text_matches_search(blob: str, query: str) -> bool:
+    """Match full query substring, significant tokens, or compact alphanumerics (for My.Mister vs mymister)."""
+    ql = (query or "").strip().lower()
+    if len(ql) < 2:
+        return True
+    if ql in blob:
+        return True
+    tokens = [t for t in re.split(r"[^\w]+", ql) if t]
+    sig = [t for t in tokens if len(t) >= 4 or (len(t) >= 3 and t not in _QUERY_STOPWORDS)]
+    if not sig:
+        sig = tokens
+    if sig and all(t in blob for t in sig):
+        return True
+    cq = re.sub(r"[^\w]", "", ql)
+    cb = re.sub(r"[^\w]", "", blob)
+    if len(cq) >= 4 and cq in cb:
+        return True
+    return False
+
+
+def _looks_like_tv_feature(feat: dict[str, Any], attr: dict[str, Any]) -> bool:
+    ft = str(feat.get("feature_type") or attr.get("feature_type") or "").strip().lower()
+    if "episode" in ft or "tv" in ft or "series" in ft:
+        return True
+    if feat.get("season_number") is not None and feat.get("episode_number") is not None:
+        return True
+    return False
+
+
+def _primary_title_from_feature(feat: dict[str, Any], attr: dict[str, Any]) -> str:
+    """
+    Prefer stable names for display and dedupe. OpenSubtitles often stores a long
+    'YEAR - Title' string in movie_name; title is usually cleaner. TV episodes may
+    expose parent/series fields separate from episode title.
+    """
+    if not isinstance(feat, dict):
+        feat = {}
+    if not isinstance(attr, dict):
+        attr = {}
+    if _looks_like_tv_feature(feat, attr):
+        for key in (
+            "parent_title",
+            "parent_movie_name",
+            "series_name",
+            "series_title",
+            "show_title",
+            "tv_series_title",
+        ):
+            v = feat.get(key)
+            if isinstance(v, str) and v.strip():
+                base = v.strip()
+                ep = feat.get("title")
+                ep_s = ep.strip() if isinstance(ep, str) else ""
+                if ep_s and ep_s.lower() != base.lower():
+                    bl = base.lower()
+                    el = ep_s.lower()
+                    if not el.startswith(bl) and not bl.startswith(el):
+                        merged = f"{base} · {ep_s}"
+                        if not _title_is_placeholder(merged):
+                            return merged
+                if not _title_is_placeholder(base):
+                    return base
+    for key in ("original_title", "original_name", "original_movie_name"):
+        v = feat.get(key)
+        if isinstance(v, str) and v.strip() and not _title_is_placeholder(v.strip()):
+            return v.strip()
+    t = feat.get("title")
+    if isinstance(t, str) and t.strip() and not _title_is_placeholder(t.strip()):
+        return t.strip()
+    mn = feat.get("movie_name")
+    if isinstance(mn, str) and mn.strip() and not _title_is_placeholder(mn.strip()):
+        return mn.strip()
+    return ""
+
+
+def filter_subtitle_rows_by_query(rows: list[dict[str, Any]], query: str) -> list[dict[str, Any]]:
+    """
+    Drop obvious off-topic hits when the user's query appears nowhere in title,
+    release, or filename. If nothing would remain (e.g. non-Latin titles), keep all.
+    """
+    q = (query or "").strip().lower()
+    if len(q) < 2:
+        return rows
+
+    def blob(r: dict[str, Any]) -> str:
+        parts = [
+            str(r.get("title") or ""),
+            str(r.get("release") or ""),
+            str(r.get("fileName") or ""),
+        ]
+        return " ".join(parts).lower()
+
+    matched = [r for r in rows if _text_matches_search(blob(r), query)]
+    return matched if matched else rows
+
+
+def filter_work_suggestions_by_query(suggestions: list[dict[str, Any]], query: str) -> list[dict[str, Any]]:
+    """Same idea as filter_subtitle_rows_by_query for distinct-work suggestions."""
+    q = (query or "").strip()
+    if len(q) < 2:
+        return suggestions
+
+    def blob(s: dict[str, Any]) -> str:
+        return f"{s.get('title') or ''} {s.get('searchQuery') or ''}".lower()
+
+    matched = [s for s in suggestions if _text_matches_search(blob(s), q)]
+    return matched if matched else suggestions
+
+
 def clean_work_search_query(title: str, year: Any) -> str:
     """
     OpenSubtitles often uses movie_name like '1999 - The Matrix'. Appending (year) again
@@ -696,7 +1004,7 @@ def _feature_dedupe_key(item: dict[str, Any]) -> str:
     feat = attr.get("feature_details") or {}
     if not isinstance(feat, dict):
         feat = {}
-    title = str(feat.get("movie_name") or feat.get("title") or attr.get("release") or "").strip()
+    title = _primary_title_from_feature(feat, attr) or str(attr.get("release") or "").strip()
     year = feat.get("year")
     season = feat.get("season_number")
     episode = feat.get("episode_number")
@@ -714,11 +1022,26 @@ def _work_suggestion_from_subtitle_item(
     feat = attr.get("feature_details") or {}
     if not isinstance(feat, dict):
         feat = {}
-    title_raw = feat.get("movie_name") or feat.get("title") or attr.get("release") or ""
-    title = str(title_raw).strip() if title_raw else ""
+    title = _primary_title_from_feature(feat, attr)
+    if _title_is_placeholder(title):
+        title = ""
+    if not title:
+        files = attr.get("files")
+        if isinstance(files, list) and files and isinstance(files[0], dict):
+            title = _title_hint_from_sub_filename(str(files[0].get("file_name") or ""))
+    if not title:
+        rel_s = str(attr.get("release") or "").strip()
+        if rel_s and not _release_looks_like_tech_strip_tag(rel_s):
+            title = rel_s
     if not title:
         return None
-    year = feat.get("year")
+    rel_s = str(attr.get("release") or "").strip()
+    fn0 = ""
+    _files = attr.get("files")
+    if isinstance(_files, list) and _files and isinstance(_files[0], dict):
+        fn0 = str(_files[0].get("file_name") or "")
+    api_year = feat.get("year")
+    year = _pick_display_year(feat, api_year, fn0, rel_s, display_title=title)
     season = feat.get("season_number")
     episode = feat.get("episode_number")
     feature_type = feat.get("feature_type") or attr.get("feature_type")
@@ -819,7 +1142,7 @@ def flatten_subtitle_results(
         if not isinstance(feat, dict):
             feat = {}
 
-        title = feat.get("movie_name") or feat.get("title") or attr.get("release") or ""
+        base_feature_title = _primary_title_from_feature(feat, attr)
         year = feat.get("year")
         season = feat.get("season_number")
         episode = feat.get("episode_number")
@@ -838,7 +1161,8 @@ def flatten_subtitle_results(
             # Single-file payloads sometimes expose file_id on attributes
             fid = attr.get("file_id") or attr.get("files_file_id")
             if fid is not None:
-                files = [{"file_id": fid, "file_name": attr.get("file_name") or release or f"{title}.{language}.srt"}]
+                _stub = (base_feature_title or "subtitle") if not _title_is_placeholder(base_feature_title) else "subtitle"
+                files = [{"file_id": fid, "file_name": attr.get("file_name") or release or f"{_stub}.{language}.srt"}]
             else:
                 continue
 
@@ -867,11 +1191,23 @@ def flatten_subtitle_results(
                         lc,
                     )
                 )
+            row_title = base_feature_title
+            if _title_is_placeholder(row_title):
+                row_title = ""
+            if not row_title:
+                row_title = _title_hint_from_sub_filename(str(file_name))
+            rel_s = str(release or "").strip()
+            if not row_title and rel_s and not _release_looks_like_tech_strip_tag(rel_s):
+                row_title = rel_s
+            if not row_title:
+                row_title = str(file_name) if file_name else "—"
+            fn_s = str(file_name)
+            display_year = _pick_display_year(feat, year, fn_s, rel_s, display_title=row_title)
             rows.append(
                 {
                     "fileId": str(fid),
-                    "title": str(title) if title else release or file_name,
-                    "year": year,
+                    "title": row_title,
+                    "year": display_year,
                     "season": season,
                     "episode": episode,
                     "featureType": feature_type,
