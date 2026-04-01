@@ -587,6 +587,15 @@ input[type="checkbox"] {
     font-weight: 600;
 }
 
+.translation-progress-timing {
+    text-align: right;
+    margin: -10px 0 18px 0;
+    font-size: 0.9em;
+    color: #555;
+    line-height: 1.4;
+    font-variant-numeric: tabular-nums;
+}
+
 .error-message {
     display: none;
     background: #fee;

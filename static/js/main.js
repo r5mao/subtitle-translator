@@ -852,6 +852,36 @@ async function runDownloadOriginal() {
     }
 }
 
+function formatDurationMmSs(totalSec) {
+    const s = Math.max(0, Math.floor(totalSec));
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${m}:${String(r).padStart(2, '0')}`;
+}
+
+/** Elapsed wall time + ETA from linear extrapolation of percent complete. */
+function buildTranslationTimingText(elapsedSec, progress) {
+    const elapsedStr = formatDurationMmSs(elapsedSec);
+    if (progress >= 100) {
+        return `Finished in ${elapsedStr}`;
+    }
+    let text = `Elapsed ${elapsedStr}`;
+    if (progress <= 0) {
+        return `${text} · …`;
+    }
+    if (progress < 2) {
+        return `${text} · Estimating time remaining…`;
+    }
+    const etaSec = (elapsedSec * (100 - progress)) / progress;
+    if (!Number.isFinite(etaSec) || etaSec <= 0) {
+        return text;
+    }
+    if (etaSec >= 3600) {
+        return `${text} · ~${formatDurationMmSs(3600)}+ left`;
+    }
+    return `${text} · ~${formatDurationMmSs(etaSec)} left`;
+}
+
 async function runTranslation() {
     const loadingSpinner = document.getElementById('loadingSpinner');
     const btnText = document.getElementById('btnText');
@@ -860,6 +890,7 @@ async function runTranslation() {
     const progressBar = document.getElementById('progressBar');
     const progressFill = document.getElementById('progressFill');
     const progressPercent = document.getElementById('progressPercent');
+    const translationProgressTiming = document.getElementById('translationProgressTiming');
     const dualLanguage = document.getElementById('dualLanguage');
 
     errorMessage.style.display = 'none';
@@ -868,6 +899,27 @@ async function runTranslation() {
     progressFill.style.width = '0%';
     progressPercent.style.display = 'block';
     progressPercent.textContent = '0%';
+
+    const translationStartMs = Date.now();
+    let translationLastProgress = 0;
+    let translationDoneAtMs = null;
+    let translationTimingIntervalId = null;
+    function renderTranslationTiming() {
+        if (!translationProgressTiming) return;
+        const elapsedSec =
+            translationLastProgress >= 100 && translationDoneAtMs != null
+                ? (translationDoneAtMs - translationStartMs) / 1000
+                : (Date.now() - translationStartMs) / 1000;
+        translationProgressTiming.textContent = buildTranslationTimingText(
+            elapsedSec,
+            translationLastProgress,
+        );
+    }
+    if (translationProgressTiming) {
+        translationProgressTiming.hidden = false;
+        renderTranslationTiming();
+        translationTimingIntervalId = setInterval(renderTranslationTiming, 250);
+    }
 
     translateBtn.disabled = true;
     loadingSpinner.style.display = 'inline-block';
@@ -903,6 +955,11 @@ async function runTranslation() {
             evtSource.onmessage = function (event) {
                 let progress = parseInt(event.data, 10);
                 if (isNaN(progress)) progress = 0;
+                translationLastProgress = progress;
+                if (progress >= 100 && translationDoneAtMs == null) {
+                    translationDoneAtMs = Date.now();
+                }
+                renderTranslationTiming();
                 progressFill.style.width = progress + '%';
                 progressFill.setAttribute('aria-valuenow', progress);
                 progressPercent.textContent = progress + '%';
@@ -1010,6 +1067,14 @@ async function runTranslation() {
         errorMessage.style.display = 'block';
         progressFill.style.width = '0%';
     } finally {
+        if (translationTimingIntervalId != null) {
+            clearInterval(translationTimingIntervalId);
+            translationTimingIntervalId = null;
+        }
+        if (translationProgressTiming) {
+            translationProgressTiming.hidden = true;
+            translationProgressTiming.textContent = '';
+        }
         translateBtn.disabled = false;
         loadingSpinner.style.display = 'none';
         updatePrimaryButtonLabel();
