@@ -28,7 +28,7 @@ class _FakeOpenSubtitlesClient:
     def configured(self):
         return True
 
-    def search(self, query, languages="", page=1, per_page=25):
+    def search(self, query, languages="", page=1, per_page=10):
         assert query.strip()
         type(self).last_search = {
             "query": query,
@@ -109,10 +109,53 @@ def test_opensubtitles_search_returns_results(client, os_env_configured, monkeyp
     assert row["title"] == "Test Movie"
     assert row["posterUrl"] == "https://example.com/poster/test-movie.jpg"
     assert data["page"] == 1
-    assert data["perPage"] == 25
+    assert data["perPage"] == 10
     assert data["totalPages"] == 3
     assert data["totalCount"] == 75
-    assert _FakeOpenSubtitlesClient.last_search["per_page"] == 25
+    assert _FakeOpenSubtitlesClient.last_search["per_page"] == 10
+
+
+class _FakeOpenSubtitlesManyPages(_FakeOpenSubtitlesClient):
+    """Upstream reports more pages than we expose to the client."""
+
+    def search(self, query, languages="", page=1, per_page=10):
+        out = super().search(query, languages=languages, page=page, per_page=per_page)
+        out = dict(out)
+        out["total_pages"] = 50
+        return out
+
+
+def test_opensubtitles_search_caps_total_pages(client, os_env_configured, monkeypatch):
+    monkeypatch.setattr(
+        "srt_translator.api.opensubtitles_routes.OpenSubtitlesClient",
+        _FakeOpenSubtitlesManyPages,
+    )
+    monkeypatch.setattr(
+        "srt_translator.api.opensubtitles_routes.get_language_name_lookup",
+        lambda _c: {"en": "English"},
+    )
+    resp = client.post(
+        "/api/opensubtitles/search",
+        json={"query": "Test Movie", "language": "en", "page": 1},
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["totalPages"] == 10
+
+
+def test_opensubtitles_search_rejects_page_above_cap(client, os_env_configured, monkeypatch):
+    monkeypatch.setattr(
+        "srt_translator.api.opensubtitles_routes.OpenSubtitlesClient",
+        _FakeOpenSubtitlesClient,
+    )
+    monkeypatch.setattr(
+        "srt_translator.api.opensubtitles_routes.get_language_name_lookup",
+        lambda _c: {"en": "English"},
+    )
+    resp = client.post(
+        "/api/opensubtitles/search",
+        json={"query": "Test Movie", "language": "en", "page": 11},
+    )
+    assert resp.status_code == 400
 
 
 def test_opensubtitles_search_accepts_per_page(client, os_env_configured, monkeypatch):
@@ -134,6 +177,69 @@ def test_opensubtitles_search_accepts_per_page(client, os_env_configured, monkey
     assert data["perPage"] == 50
     assert _FakeOpenSubtitlesClient.last_search["page"] == 2
     assert _FakeOpenSubtitlesClient.last_search["per_page"] == 50
+
+
+class _FakeMultiFilePerSubtitle(_FakeOpenSubtitlesClient):
+    """Each API subtitle has multiple files; flatten yields more rows than per_page."""
+
+    def search(self, query, languages="", page=1, per_page=10):
+        assert query.strip()
+        type(self).last_search = {
+            "query": query,
+            "languages": languages,
+            "page": page,
+            "per_page": per_page,
+        }
+        data_items = []
+        for i in range(5):
+            data_items.append(
+                {
+                    "type": "subtitle",
+                    "attributes": {
+                        "language": "en",
+                        "release": f"Release.{i}",
+                        "download_count": 1,
+                        "fps": 23.976,
+                        "files": [
+                            {"file_id": 880000 + i * 10 + j, "file_name": f"sub_{i}_{j}.srt"}
+                            for j in range(3)
+                        ],
+                        "feature_details": {
+                            "movie_name": "Multi CD",
+                            "year": 2020,
+                        },
+                        "related_links": {
+                            "img_url": "https://example.com/poster.jpg",
+                        },
+                    },
+                }
+            )
+        return {
+            "data": data_items,
+            "total_pages": 1,
+            "total_count": 5,
+        }
+
+
+def test_opensubtitles_search_caps_flattened_rows_to_per_page(
+    client, os_env_configured, monkeypatch
+):
+    monkeypatch.setattr(
+        "srt_translator.api.opensubtitles_routes.OpenSubtitlesClient",
+        _FakeMultiFilePerSubtitle,
+    )
+    monkeypatch.setattr(
+        "srt_translator.api.opensubtitles_routes.get_language_name_lookup",
+        lambda _c: {"en": "English"},
+    )
+    resp = client.post(
+        "/api/opensubtitles/search",
+        json={"query": "Multi", "language": "en", "page": 1, "perPage": 10},
+    )
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["perPage"] == 10
+    assert len(data["results"]) == 10
 
 
 def test_opensubtitles_fetch_stores_temp_file(client, os_env_configured, monkeypatch):
@@ -774,7 +880,7 @@ def test_subtitles_search_retries_without_include_on_400(monkeypatch):
     monkeypatch.setattr(OpenSubtitlesClient, "login", lambda self, force=False: None)
     monkeypatch.setattr(OpenSubtitlesClient, "_request", fake_request)
     c = OpenSubtitlesClient(api_key="k", username="u", password="p")
-    out = c.search("matrix", page=1, per_page=25)
+    out = c.search("matrix", page=1, per_page=10)
     assert out == {"data": []}
     assert len(calls) == 2
     assert calls[0][2].get("include") == "feature"

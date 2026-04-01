@@ -21,6 +21,8 @@ from srt_translator.services.opensubtitles_client import (
 )
 
 _ALLOWED_PER_PAGE = frozenset({10, 25, 50, 100})
+# UI and API only expose this many OpenSubtitles result pages (page 1..N).
+_MAX_SEARCH_PAGES = 10
 from srt_translator.services.opensubtitles_lang import ui_lang_to_opensubtitles
 from srt_translator.services.fetched_subtitle_file import (
     is_valid_fetched_id,
@@ -133,17 +135,24 @@ def register_opensubtitles_routes(api_bp):
             ui_lang = (body.get("language") or "").strip()
             os_langs = ui_lang_to_opensubtitles(ui_lang) if ui_lang else ""
             page = int(body.get("page") or 1)
-            raw_per = body.get("perPage", body.get("per_page", 25))
+            if page < 1 or page > _MAX_SEARCH_PAGES:
+                return jsonify({"error": "Invalid page"}), 400
+            raw_per = body.get("perPage", body.get("per_page", 10))
             try:
                 per_page = int(raw_per)
             except (TypeError, ValueError):
-                per_page = 25
+                per_page = 10
             if per_page not in _ALLOWED_PER_PAGE:
-                per_page = 25
+                per_page = 10
             lang_lookup = get_language_name_lookup(c)
             raw = c.search(query, languages=os_langs, page=page, per_page=per_page)
             rows = flatten_subtitle_results(raw, language_names=lang_lookup)
+            # One API row can expand to several file rows; cap so UI row count matches per_page.
+            if len(rows) > per_page:
+                rows = rows[:per_page]
             tp = total_pages_from_response(raw)
+            if tp is not None:
+                tp = min(tp, _MAX_SEARCH_PAGES)
             tc = total_count_from_response(raw)
             if tc is None:
                 tc = len(rows)

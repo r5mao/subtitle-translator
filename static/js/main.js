@@ -93,6 +93,8 @@ const osPerPageSelect = document.getElementById('osPerPageSelect');
 const osPagePrev = document.getElementById('osPagePrev');
 const osPageNext = document.getElementById('osPageNext');
 const osPageInfo = document.getElementById('osPageInfo');
+/** Max OpenSubtitles pages the UI/API allow (must match server _MAX_SEARCH_PAGES). */
+const OS_MAX_PAGER_PAGES = 10;
 const languageSection = document.getElementById('languageSection');
 const translateToOtherLang = document.getElementById('translateToOtherLang');
 const translateOnlyFields = document.getElementById('translateOnlyFields');
@@ -574,10 +576,11 @@ function selectedOptionLabel(selectEl) {
 }
 
 function effectiveTotalPages() {
+    let tp = 1;
     if (osTotalPages != null && osTotalPages >= 1) {
-        return osTotalPages;
+        tp = osTotalPages;
     }
-    return 1;
+    return Math.min(tp, OS_MAX_PAGER_PAGES);
 }
 
 function updateOsPagerUI() {
@@ -621,7 +624,7 @@ async function runOpenSubtitlesSearch(options) {
     if (resetPage) {
         osSearchPage = 1;
     }
-    const perPage = parseInt(osPerPageSelect.value, 10) || 25;
+    const perPage = parseInt(osPerPageSelect.value, 10) || 10;
 
     osSearchBtn.disabled = true;
     osSearchStatus.textContent = 'Searching…';

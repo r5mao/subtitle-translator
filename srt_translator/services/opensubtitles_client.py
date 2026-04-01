@@ -162,7 +162,7 @@ class OpenSubtitlesClient:
         *,
         languages: str = "",
         page: int = 1,
-        per_page: int = 25,
+        per_page: int = 10,
     ) -> dict[str, Any]:
         """Search subtitles. `languages` is comma-separated OS codes; empty = any language."""
         self.login()
