@@ -5,4 +5,5 @@ Werkzeug==2.3.7
 googletrans==4.0.2
 pypinyin==0.51.0
 pysrt==1.1.2
-pytest==7.4.2
+pytest
+playwright
