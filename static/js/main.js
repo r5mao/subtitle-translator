@@ -97,7 +97,6 @@ const languageSection = document.getElementById('languageSection');
 const translateToOtherLang = document.getElementById('translateToOtherLang');
 const translateOnlyFields = document.getElementById('translateOnlyFields');
 const translateToggleWrap = document.getElementById('translateToggleWrap');
-const sourceLanguageHint = document.getElementById('sourceLanguageHint');
 const subtitlePreviewPanel = document.getElementById('subtitlePreviewPanel');
 const subtitlePreviewPoster = document.getElementById('subtitlePreviewPoster');
 const subtitlePreviewLine1 = document.getElementById('subtitlePreviewLine1');
@@ -166,16 +165,9 @@ function syncTranslateToggleVisibility() {
         translateToggleWrap.hidden = true;
         translateToOtherLang.checked = true;
         translateOnlyFields.hidden = false;
-        if (sourceLanguageHint) {
-            sourceLanguageHint.textContent = 'Used as the source language for translation.';
-        }
     } else {
         translateToggleWrap.hidden = false;
         translateOnlyFields.hidden = !translateToOtherLang.checked;
-        if (sourceLanguageHint) {
-            sourceLanguageHint.textContent =
-                'Filters OpenSubtitles search when “Search all languages” is off. Updates when you pick a result.';
-        }
     }
     updatePrimaryButtonLabel();
     validateLanguages();
