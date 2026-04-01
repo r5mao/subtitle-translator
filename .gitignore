@@ -20,3 +20,7 @@ Thumbs.db
 
 # env
 .env
+
+# Local debug / NDJSON session logs
+debug-*.log
+.cursor/debug*.log
