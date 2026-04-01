@@ -31,9 +31,15 @@
             <div class="form-group" id="searchPanel">
                 <label for="osQuery">Movie or show title</label>
                 <div class="os-search-row">
-                    <input type="text" id="osQuery" class="text-input os-query-input" placeholder="e.g. The Matrix" autocomplete="off">
+                    <div class="os-query-wrap">
+                        <input type="text" id="osQuery" class="text-input os-query-input" placeholder="e.g. The Matrix" autocomplete="off" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls="osSuggestionsList" aria-autocomplete="list">
+                        <div id="osSuggestionsPanel" class="os-suggestions-panel" hidden>
+                            <ul id="osSuggestionsList" class="os-suggestions-list" role="listbox" aria-label="Title suggestions"></ul>
+                        </div>
+                    </div>
                     <button type="button" class="secondary-btn os-search-btn" id="osSearchBtn">Search subtitles</button>
                 </div>
+                <span id="osSuggestLive" class="sr-only" aria-live="polite"></span>
                 <label class="inline-check" style="margin-top:12px;">
                     <input type="checkbox" id="osAnyLanguage">
                     Search all languages (ignore Original Language filter for search)

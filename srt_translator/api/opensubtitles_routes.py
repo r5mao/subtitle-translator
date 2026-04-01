@@ -7,6 +7,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from typing import Optional
 
 from flask import Response, jsonify, request, send_file
 
@@ -14,8 +15,10 @@ from srt_translator.services.opensubtitles_client import (
     OpenSubtitlesClient,
     OpenSubtitlesError,
     OpenSubtitlesNotConfigured,
+    distinct_work_suggestions_from_subtitles,
     flatten_subtitle_results,
     get_language_name_lookup,
+    normalize_opensubtitles_imdb_id,
     total_count_from_response,
     total_pages_from_response,
 )
@@ -23,6 +26,10 @@ from srt_translator.services.opensubtitles_client import (
 _ALLOWED_PER_PAGE = frozenset({10, 25, 50, 100})
 # UI and API only expose this many OpenSubtitles result pages (page 1..N).
 _MAX_SEARCH_PAGES = 10
+_SUGGESTIONS_MAX = 10
+_SUGGESTIONS_FETCH_PER_PAGE = 50
+_SUGGEST_QUERY_MIN_LEN = 2
+_SUGGEST_QUERY_MAX_LEN = 200
 from srt_translator.services.opensubtitles_lang import ui_lang_to_opensubtitles
 from srt_translator.services.fetched_subtitle_file import (
     is_valid_fetched_id,
@@ -42,8 +49,12 @@ _POSTER_ALLOWED_HOST_SUFFIXES = frozenset(
         "opensubtitles.org",
         "image.tmdb.org",
         "themoviedb.org",
+        "tmdb.org",
         "cloudfront.net",
         "amazonaws.com",
+        "imdb.com",
+        "media-amazon.com",
+        "ssl-images-amazon.com",
     }
 )
 _POSTER_MAX_BYTES = 2 * 1024 * 1024
@@ -144,8 +155,25 @@ def register_opensubtitles_routes(api_bp):
                 per_page = 10
             if per_page not in _ALLOWED_PER_PAGE:
                 per_page = 10
+            year_val: Optional[int] = None
+            yr = body.get("year")
+            if yr is not None and yr != "":
+                try:
+                    yi = int(yr)
+                    if 1870 <= yi <= 2100:
+                        year_val = yi
+                except (TypeError, ValueError):
+                    pass
+            imdb_q = normalize_opensubtitles_imdb_id(body.get("imdbId") or body.get("imdb_id"))
             lang_lookup = get_language_name_lookup(c)
-            raw = c.search(query, languages=os_langs, page=page, per_page=per_page)
+            raw = c.search(
+                query,
+                languages=os_langs,
+                page=page,
+                per_page=per_page,
+                year=year_val,
+                imdb_id=imdb_q,
+            )
             rows = flatten_subtitle_results(raw, language_names=lang_lookup)
             # One API row can expand to several file rows; cap so UI row count matches per_page.
             if len(rows) > per_page:
@@ -172,6 +200,32 @@ def register_opensubtitles_routes(api_bp):
             return jsonify({"error": str(e)}), 502
         except ValueError:
             return jsonify({"error": "Invalid page"}), 400
+
+    @api_bp.route("/opensubtitles/suggestions", methods=["POST"])
+    def opensubtitles_suggestions():
+        c = OpenSubtitlesClient()
+        if not c.configured():
+            return jsonify({"error": "OpenSubtitles is not configured on this server."}), 503
+        try:
+            body = request.get_json(silent=True) or {}
+            query = (body.get("query") or "").strip()
+            if len(query) < _SUGGEST_QUERY_MIN_LEN:
+                return jsonify({"error": f"query must be at least {_SUGGEST_QUERY_MIN_LEN} characters"}), 400
+            if len(query) > _SUGGEST_QUERY_MAX_LEN:
+                return jsonify({"error": "query too long"}), 400
+            raw = c.search(
+                query,
+                languages="",
+                page=1,
+                per_page=_SUGGESTIONS_FETCH_PER_PAGE,
+            )
+            suggestions = distinct_work_suggestions_from_subtitles(raw, limit=_SUGGESTIONS_MAX)
+            return jsonify({"suggestions": suggestions})
+        except OpenSubtitlesNotConfigured as e:
+            return jsonify({"error": str(e)}), 503
+        except OpenSubtitlesError as e:
+            logger.warning("OpenSubtitles suggestions: %s", e)
+            return jsonify({"error": str(e)}), 502
 
     @api_bp.route("/opensubtitles/fetch", methods=["POST"])
     def opensubtitles_fetch():

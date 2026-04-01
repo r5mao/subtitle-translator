@@ -39,6 +39,18 @@ class OpenSubtitlesNotConfigured(OpenSubtitlesError):
     """Missing API credentials."""
 
 
+def normalize_opensubtitles_imdb_id(raw: Any) -> Optional[str]:
+    """Numeric IMDb id for GET /subtitles (no ``tt`` prefix)."""
+    if raw is None:
+        return None
+    s = str(raw).strip().lower()
+    if not s:
+        return None
+    if s.startswith("tt"):
+        s = s[2:]
+    return s if s.isdigit() else None
+
+
 class OpenSubtitlesClient:
     """Login, search subtitles, download bytes. Token refreshed on 401."""
 
@@ -163,6 +175,8 @@ class OpenSubtitlesClient:
         languages: str = "",
         page: int = 1,
         per_page: int = 10,
+        year: Optional[int] = None,
+        imdb_id: Optional[str] = None,
     ) -> dict[str, Any]:
         """Search subtitles. `languages` is comma-separated OS codes; empty = any language."""
         self.login()
@@ -175,6 +189,16 @@ class OpenSubtitlesClient:
         }
         if languages.strip():
             q["languages"] = languages.strip()
+        if year is not None:
+            try:
+                yi = int(year)
+                if 1870 <= yi <= 2100:
+                    q["year"] = str(yi)
+            except (TypeError, ValueError):
+                pass
+        nimdb = normalize_opensubtitles_imdb_id(imdb_id)
+        if nimdb:
+            q["imdb_id"] = nimdb
         try:
             return self._request("GET", "/api/v1/subtitles", query=q)
         except OpenSubtitlesError as e:
@@ -608,6 +632,166 @@ def _poster_from_jsonapi_relationships(
     return None
 
 
+def _resolve_poster_and_backdrop(
+    item: dict[str, Any],
+    attr: dict[str, Any],
+    feat: dict[str, Any],
+    included_index: dict[tuple[str, str], dict[str, Any]],
+    tmdb_media_cache: dict[int, tuple[Optional[str], Optional[str]]],
+) -> tuple[Optional[str], Optional[str]]:
+    poster_url = _poster_from_jsonapi_relationships(item, included_index)
+    if not poster_url:
+        poster_url = _poster_url_from_subtitle_attributes(attr, feat)
+    if not poster_url:
+        poster_url = _deep_find_image_url_in_payload(attr, feat)
+    if poster_url:
+        poster_url = _maybe_absolutize_opensubtitles_image_url(poster_url) or poster_url
+    backdrop_url: Optional[str] = None
+    tmdb_raw = feat.get("tmdb_id") or feat.get("parent_tmdb_id")
+    if tmdb_raw is not None:
+        tmdb_poster, tmdb_backdrop = _tmdb_poster_and_backdrop_for_id(tmdb_raw, tmdb_media_cache)
+        if not poster_url and tmdb_poster:
+            poster_url = tmdb_poster
+        if tmdb_backdrop:
+            backdrop_url = tmdb_backdrop
+    return poster_url, backdrop_url
+
+
+def clean_work_search_query(title: str, year: Any) -> str:
+    """
+    OpenSubtitles often uses movie_name like '1999 - The Matrix'. Appending (year) again
+    breaks text search. Strip a leading 'YEAR -' and trailing '(YEAR)' when they match feature year.
+    """
+    t = (title or "").strip()
+    if not t:
+        return t
+    ys = str(year).strip() if year is not None and year != "" else ""
+    if ys.isdigit() and len(ys) == 4:
+        t = re.sub(rf"^\s*{re.escape(ys)}\s*-\s*", "", t, flags=re.IGNORECASE).strip()
+        t = re.sub(rf"\s*\(\s*{re.escape(ys)}\s*\)\s*$", "", t, flags=re.IGNORECASE).strip()
+    t = re.sub(r"\s+", " ", t).strip()
+    return t or (title or "").strip()
+
+
+def _feature_dedupe_key(item: dict[str, Any]) -> str:
+    rel = item.get("relationships")
+    if isinstance(rel, dict):
+        block = rel.get("feature")
+        if isinstance(block, dict):
+            data = block.get("data")
+            refs: list[dict[str, Any]] = []
+            if isinstance(data, dict):
+                refs = [data]
+            elif isinstance(data, list):
+                refs = [x for x in data if isinstance(x, dict)]
+            for ref in refs:
+                rid = ref.get("id")
+                if rid is None:
+                    continue
+                rtype = str(ref.get("type") or "feature")
+                return f"{rtype}:{rid}"
+    attr = item.get("attributes") or {}
+    if not isinstance(attr, dict):
+        attr = {}
+    feat = attr.get("feature_details") or {}
+    if not isinstance(feat, dict):
+        feat = {}
+    title = str(feat.get("movie_name") or feat.get("title") or attr.get("release") or "").strip()
+    year = feat.get("year")
+    season = feat.get("season_number")
+    episode = feat.get("episode_number")
+    return f"fallback:{title}|{year}|{season}|{episode}"
+
+
+def _work_suggestion_from_subtitle_item(
+    item: dict[str, Any],
+    included_index: dict[tuple[str, str], dict[str, Any]],
+    tmdb_media_cache: dict[int, tuple[Optional[str], Optional[str]]],
+) -> Optional[dict[str, Any]]:
+    attr = item.get("attributes") or {}
+    if not isinstance(attr, dict):
+        attr = {}
+    feat = attr.get("feature_details") or {}
+    if not isinstance(feat, dict):
+        feat = {}
+    title_raw = feat.get("movie_name") or feat.get("title") or attr.get("release") or ""
+    title = str(title_raw).strip() if title_raw else ""
+    if not title:
+        return None
+    year = feat.get("year")
+    season = feat.get("season_number")
+    episode = feat.get("episode_number")
+    feature_type = feat.get("feature_type") or attr.get("feature_type")
+    poster_url, _bd = _resolve_poster_and_backdrop(item, attr, feat, included_index, tmdb_media_cache)
+
+    feature_id: Optional[str] = None
+    rel = item.get("relationships")
+    if isinstance(rel, dict):
+        fb = rel.get("feature")
+        if isinstance(fb, dict):
+            data = fb.get("data")
+            refs: list[dict[str, Any]] = []
+            if isinstance(data, dict):
+                refs = [data]
+            elif isinstance(data, list):
+                refs = [x for x in data if isinstance(x, dict)]
+            for ref in refs:
+                if ref.get("id") is not None:
+                    feature_id = str(ref["id"])
+                    break
+
+    imdb_raw = feat.get("imdb_id") or feat.get("parent_imdb_id")
+    imdb_id = normalize_opensubtitles_imdb_id(imdb_raw)
+
+    return {
+        "title": title,
+        "searchQuery": clean_work_search_query(title, year),
+        "year": year,
+        "season": season,
+        "episode": episode,
+        "featureType": feature_type,
+        "posterUrl": poster_url,
+        "featureId": feature_id,
+        "imdbId": imdb_id,
+    }
+
+
+def distinct_work_suggestions_from_subtitles(
+    api_json: dict[str, Any],
+    *,
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    """
+    Distinct movies/shows (one per JSON:API feature or fallback key) for typeahead.
+    Only runs poster/TMDb resolution once per distinct work.
+    """
+    cap = max(1, min(25, int(limit)))
+    items = api_json.get("data")
+    if not isinstance(items, list):
+        return []
+
+    seen: dict[str, dict[str, Any]] = {}
+    key_order: list[str] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        key = _feature_dedupe_key(item)
+        if key not in seen:
+            seen[key] = item
+            key_order.append(key)
+
+    included_index = _included_resource_index(api_json.get("included"))
+    tmdb_media_cache: dict[int, tuple[Optional[str], Optional[str]]] = {}
+    out: list[dict[str, Any]] = []
+    for key in key_order:
+        if len(out) >= cap:
+            break
+        sug = _work_suggestion_from_subtitle_item(seen[key], included_index, tmdb_media_cache)
+        if sug:
+            out.append(sug)
+    return out
+
+
 def flatten_subtitle_results(
     api_json: dict[str, Any],
     language_names: Optional[dict[str, str]] = None,
@@ -658,21 +842,9 @@ def flatten_subtitle_results(
             else:
                 continue
 
-        poster_url = _poster_from_jsonapi_relationships(item, included_index)
-        if not poster_url:
-            poster_url = _poster_url_from_subtitle_attributes(attr, feat)
-        if not poster_url:
-            poster_url = _deep_find_image_url_in_payload(attr, feat)
-        if poster_url:
-            poster_url = _maybe_absolutize_opensubtitles_image_url(poster_url) or poster_url
-        backdrop_url: Optional[str] = None
-        tmdb_raw = feat.get("tmdb_id") or feat.get("parent_tmdb_id")
-        if tmdb_raw is not None:
-            tmdb_poster, tmdb_backdrop = _tmdb_poster_and_backdrop_for_id(tmdb_raw, tmdb_media_cache)
-            if not poster_url and tmdb_poster:
-                poster_url = tmdb_poster
-            if tmdb_backdrop:
-                backdrop_url = tmdb_backdrop
+        poster_url, backdrop_url = _resolve_poster_and_backdrop(
+            item, attr, feat, included_index, tmdb_media_cache
+        )
 
         for f in files:
             if not isinstance(f, dict):

@@ -81,6 +81,9 @@ const searchPanel = document.getElementById('searchPanel');
 const uploadPanel = document.getElementById('uploadPanel');
 const opensubtitlesHint = document.getElementById('opensubtitlesHint');
 const osQuery = document.getElementById('osQuery');
+const osSuggestionsPanel = document.getElementById('osSuggestionsPanel');
+const osSuggestionsList = document.getElementById('osSuggestionsList');
+const osSuggestLive = document.getElementById('osSuggestLive');
 const osAnyLanguage = document.getElementById('osAnyLanguage');
 const osSearchBtn = document.getElementById('osSearchBtn');
 const osSearchStatus = document.getElementById('osSearchStatus');
@@ -128,9 +131,33 @@ let selectedOsFileId = null;
 let fetchInProgressFileId = null;
 let osLastSearchQuery = '';
 let osLastSearchLang = '';
+/** When set (from a suggestion pick), passed to OpenSubtitles as year / imdb_id filters. */
+let osSearchRefine = { year: null, imdbId: null };
 let osSearchPage = 1;
 let osTotalPages = null;
 let osTotalCount = null;
+
+let suggestAbort = null;
+let suggestDebounceTimer = null;
+let suggestionRows = [];
+let activeSuggestionIndex = -1;
+
+function hideOpenSubtitlesSuggestions() {
+    if (suggestDebounceTimer) {
+        clearTimeout(suggestDebounceTimer);
+        suggestDebounceTimer = null;
+    }
+    if (suggestAbort) {
+        suggestAbort.abort();
+        suggestAbort = null;
+    }
+    suggestionRows = [];
+    activeSuggestionIndex = -1;
+    osSuggestionsList.innerHTML = '';
+    osSuggestionsPanel.hidden = true;
+    osQuery.setAttribute('aria-expanded', 'false');
+    osQuery.removeAttribute('aria-activedescendant');
+}
 
 function isSearchMode() {
     return sourceSearch.checked;
@@ -237,6 +264,8 @@ function syncSubtitleSourcePanels() {
     } else {
         uploadPanel.appendChild(languageSection);
         clearOpenSubtitlesSelection();
+        hideOpenSubtitlesSuggestions();
+        osSearchRefine = { year: null, imdbId: null };
     }
     syncTranslateToggleVisibility();
 }
@@ -418,6 +447,155 @@ function posterProxySrc(remoteUrl) {
     return `${base}/api/opensubtitles/poster-image?url=${q}`;
 }
 
+/**
+ * Text to put in the search box after picking a suggestion (matches server clean_work_search_query).
+ * API sends searchQuery; older servers may omit it — strip redundant "YEAR -" / "(YEAR)" from title.
+ */
+function suggestionSearchText(s) {
+    const fromApi = s && s.searchQuery != null ? String(s.searchQuery).trim() : '';
+    if (fromApi) return fromApi;
+    let t = String((s && s.title) || '').trim();
+    const y = s && s.year;
+    if (y != null && y !== '') {
+        const ys = String(y).trim();
+        if (/^\d{4}$/.test(ys)) {
+            t = t.replace(new RegExp(`^\\s*${ys}\\s*-\\s*`, 'i'), '').trim();
+            t = t.replace(new RegExp(`\\s*\\(\\s*${ys}\\s*\\)\\s*$`, 'i'), '').trim();
+        }
+    }
+    return t.replace(/\s+/g, ' ').trim() || String((s && s.title) || '').trim();
+}
+
+function bindOsPosterImgOnError(img, placeholderClass) {
+    if (!img || img.tagName !== 'IMG') return;
+    img.addEventListener('error', function handleOsPosterImgError() {
+        img.removeEventListener('error', handleOsPosterImgError);
+        const ph = document.createElement('span');
+        ph.className = placeholderClass;
+        ph.setAttribute('aria-hidden', 'true');
+        img.replaceWith(ph);
+    });
+}
+
+function updateOpenSubtitlesSuggestionActiveClasses() {
+    const items = osSuggestionsList.querySelectorAll('.os-suggestion-item');
+    items.forEach((el, i) => {
+        const on = i === activeSuggestionIndex;
+        el.classList.toggle('os-suggestion-item-active', on);
+        el.setAttribute('aria-selected', on ? 'true' : 'false');
+        if (on) el.scrollIntoView({ block: 'nearest' });
+    });
+    if (activeSuggestionIndex >= 0) {
+        osQuery.setAttribute('aria-activedescendant', `os-sugg-${activeSuggestionIndex}`);
+    } else {
+        osQuery.removeAttribute('aria-activedescendant');
+    }
+}
+
+function renderOpenSubtitlesSuggestions(list) {
+    suggestionRows = list;
+    activeSuggestionIndex = -1;
+    osSuggestionsList.innerHTML = '';
+    if (!list.length) {
+        osSuggestionsPanel.hidden = true;
+        osQuery.setAttribute('aria-expanded', 'false');
+        return;
+    }
+    for (let i = 0; i < list.length; i += 1) {
+        const s = list[i];
+        const li = document.createElement('li');
+        li.id = `os-sugg-${i}`;
+        li.setAttribute('role', 'option');
+        li.setAttribute('aria-selected', 'false');
+        li.className = 'os-suggestion-item';
+        const url = normalizeHttpUrl(s.posterUrl);
+        const useProxy = url && /^https?:\/\//i.test(url);
+        const src = useProxy ? posterProxySrc(url) : '';
+        const posterHtml = src
+            ? `<img class="os-suggestion-poster" src="${attrEscapeUrl(src)}" alt="" loading="lazy">`
+            : '<span class="os-suggestion-poster os-suggestion-poster-placeholder" aria-hidden="true"></span>';
+        const yearStr = s.year != null && s.year !== '' ? String(s.year) : '—';
+        let meta = yearStr;
+        if (s.season != null && s.episode != null) meta += ` · S${s.season}E${s.episode}`;
+        const head = suggestionSearchText(s);
+        li.innerHTML = `<div class="os-suggestion-row">${posterHtml}<div class="os-suggestion-text"><span class="os-suggestion-title">${esc(head)}</span><span class="os-suggestion-meta">${esc(meta)}</span></div></div>`;
+        li.addEventListener('mousedown', (e) => e.preventDefault());
+        li.addEventListener('click', () => applyOpenSubtitlesSuggestion(s));
+        osSuggestionsList.appendChild(li);
+        bindOsPosterImgOnError(
+            li.querySelector('img.os-suggestion-poster'),
+            'os-suggestion-poster os-suggestion-poster-placeholder',
+        );
+    }
+    osSuggestionsPanel.hidden = false;
+    osQuery.setAttribute('aria-expanded', 'true');
+}
+
+function applyOpenSubtitlesSuggestion(s) {
+    const label = suggestionSearchText(s);
+    const y = s.year;
+    const yr =
+        y != null && y !== '' && Number.isFinite(Number(y)) ? Math.trunc(Number(y)) : null;
+    osSearchRefine = {
+        year: yr != null && yr >= 1870 && yr <= 2100 ? yr : null,
+        imdbId: s.imdbId && String(s.imdbId).trim() ? String(s.imdbId).trim() : null,
+    };
+    osQuery.value = label;
+    hideOpenSubtitlesSuggestions();
+    osSuggestLive.textContent = `Selected ${label}`;
+    void runOpenSubtitlesSearch({ refreshFromInput: true, resetPage: true, keepRefine: true });
+}
+
+const OS_SUGGEST_DEBOUNCE_MS = 300;
+const OS_SUGGEST_MIN_LEN = 2;
+
+function scheduleFetchOpenSubtitlesSuggestions() {
+    if (suggestDebounceTimer) clearTimeout(suggestDebounceTimer);
+    suggestDebounceTimer = setTimeout(() => {
+        suggestDebounceTimer = null;
+        void fetchOpenSubtitlesSuggestions();
+    }, OS_SUGGEST_DEBOUNCE_MS);
+}
+
+async function fetchOpenSubtitlesSuggestions() {
+    if (!isSearchMode() || !opensubtitlesConfigured) {
+        hideOpenSubtitlesSuggestions();
+        return;
+    }
+    const q = osQuery.value.trim();
+    if (q.length < OS_SUGGEST_MIN_LEN) {
+        hideOpenSubtitlesSuggestions();
+        return;
+    }
+    if (suggestAbort) suggestAbort.abort();
+    suggestAbort = new AbortController();
+    const ac = suggestAbort;
+    osSuggestLive.textContent = 'Loading suggestions…';
+    try {
+        const resp = await fetch(`${API}/api/opensubtitles/suggestions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: q }),
+            signal: ac.signal,
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (suggestAbort !== ac) return;
+        if (!resp.ok) {
+            hideOpenSubtitlesSuggestions();
+            osSuggestLive.textContent = data.error || 'Suggestions failed';
+            return;
+        }
+        const list = data.suggestions || [];
+        osSuggestLive.textContent =
+            list.length === 0 ? 'No title suggestions' : `${list.length} suggestions`;
+        renderOpenSubtitlesSuggestions(list);
+    } catch (e) {
+        if (e.name === 'AbortError') return;
+        hideOpenSubtitlesSuggestions();
+        osSuggestLive.textContent = '';
+    }
+}
+
 async function refreshSubtitlePreview(row) {
     if (!fetchedId) {
         hideSubtitlePreview();
@@ -516,6 +694,7 @@ function filterAndRenderResults() {
             <td>${esc(r.languageName || r.language || '')}</td>
             <td class="cell-muted">${esc(rowInfo(r))}</td>
         `;
+        bindOsPosterImgOnError(tr.querySelector('img.os-poster-thumb'), 'os-poster-placeholder');
         tr.addEventListener('click', () => selectSubtitleFile(r.fileId, r));
         tr.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' || e.key === ' ') {
@@ -602,13 +781,19 @@ function updateOsPagerVisibility() {
 }
 
 async function runOpenSubtitlesSearch(options) {
+    hideOpenSubtitlesSuggestions();
     const refreshFromInput = options && options.refreshFromInput;
     const resetPage = options && options.resetPage;
+    const keepRefine = options && options.keepRefine;
     if (refreshFromInput) {
         const q = osQuery.value.trim();
         if (!q) {
             osSearchStatus.textContent = 'Enter a title to search.';
             return;
+        }
+        const prevQ = osLastSearchQuery;
+        if (!keepRefine && q !== prevQ) {
+            osSearchRefine = { year: null, imdbId: null };
         }
         osLastSearchQuery = q;
         osLastSearchLang = osAnyLanguage.checked ? '' : sourceLanguage.value;
@@ -630,15 +815,22 @@ async function runOpenSubtitlesSearch(options) {
     osSearchStatus.textContent = 'Searching…';
     clearOpenSubtitlesSelection();
     try {
+        const searchPayload = {
+            query: osLastSearchQuery,
+            language: osLastSearchLang,
+            page: osSearchPage,
+            perPage,
+        };
+        if (osSearchRefine.year != null) {
+            searchPayload.year = osSearchRefine.year;
+        }
+        if (osSearchRefine.imdbId) {
+            searchPayload.imdbId = osSearchRefine.imdbId;
+        }
         const resp = await fetch(`${API}/api/opensubtitles/search`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                query: osLastSearchQuery,
-                language: osLastSearchLang,
-                page: osSearchPage,
-                perPage,
-            }),
+            body: JSON.stringify(searchPayload),
         });
         const data = await resp.json().catch(() => ({}));
         if (!resp.ok) {
@@ -676,8 +868,63 @@ async function runOpenSubtitlesSearch(options) {
     }
 }
 
+osQuery.addEventListener('input', (e) => {
+    if (e.isTrusted) {
+        osSearchRefine = { year: null, imdbId: null };
+    }
+    if (!isSearchMode() || !opensubtitlesConfigured) return;
+    scheduleFetchOpenSubtitlesSuggestions();
+});
+
+osQuery.addEventListener('blur', () => {
+    window.setTimeout(() => {
+        if (document.activeElement && osSuggestionsPanel.contains(document.activeElement)) return;
+        if (!osSuggestionsPanel.hidden) {
+            hideOpenSubtitlesSuggestions();
+        }
+    }, 180);
+});
+
 osQuery.addEventListener('keydown', (e) => {
+    const panelOpen = !osSuggestionsPanel.hidden && suggestionRows.length > 0;
+    if (e.key === 'Escape') {
+        if (panelOpen) {
+            e.preventDefault();
+            hideOpenSubtitlesSuggestions();
+            osSuggestLive.textContent = 'Suggestions closed';
+        }
+        return;
+    }
+    if (e.key === 'ArrowDown') {
+        if (panelOpen) {
+            e.preventDefault();
+            if (activeSuggestionIndex < suggestionRows.length - 1) {
+                activeSuggestionIndex += 1;
+            } else {
+                activeSuggestionIndex = 0;
+            }
+            updateOpenSubtitlesSuggestionActiveClasses();
+        }
+        return;
+    }
+    if (e.key === 'ArrowUp') {
+        if (panelOpen) {
+            e.preventDefault();
+            if (activeSuggestionIndex > 0) {
+                activeSuggestionIndex -= 1;
+            } else {
+                activeSuggestionIndex = suggestionRows.length - 1;
+            }
+            updateOpenSubtitlesSuggestionActiveClasses();
+        }
+        return;
+    }
     if (e.key === 'Enter') {
+        if (panelOpen && activeSuggestionIndex >= 0) {
+            e.preventDefault();
+            applyOpenSubtitlesSuggestion(suggestionRows[activeSuggestionIndex]);
+            return;
+        }
         e.preventDefault();
         runOpenSubtitlesSearch({ refreshFromInput: true, resetPage: true });
     }
@@ -709,6 +956,7 @@ async function loadOpensubtitlesStatus() {
         const data = await resp.json();
         opensubtitlesConfigured = !!data.configured;
         if (!opensubtitlesConfigured) {
+            hideOpenSubtitlesSuggestions();
             opensubtitlesHint.hidden = false;
             opensubtitlesHint.textContent =
                 'OpenSubtitles search is unavailable (server has no API credentials). Use upload instead.';

@@ -6,7 +6,12 @@ import uuid
 
 import pytest
 
-from srt_translator.services.opensubtitles_client import reset_subtitle_language_names_cache
+from srt_translator.services.opensubtitles_client import (
+    clean_work_search_query,
+    distinct_work_suggestions_from_subtitles,
+    normalize_opensubtitles_imdb_id,
+    reset_subtitle_language_names_cache,
+)
 from tests.test_translate_and_download import make_srt
 
 
@@ -28,13 +33,15 @@ class _FakeOpenSubtitlesClient:
     def configured(self):
         return True
 
-    def search(self, query, languages="", page=1, per_page=10):
+    def search(self, query, languages="", page=1, per_page=10, *, year=None, imdb_id=None, **kwargs):
         assert query.strip()
         type(self).last_search = {
             "query": query,
             "languages": languages,
             "page": page,
             "per_page": per_page,
+            "year": year,
+            "imdb_id": imdb_id,
         }
         return {
             "data": [
@@ -118,8 +125,16 @@ def test_opensubtitles_search_returns_results(client, os_env_configured, monkeyp
 class _FakeOpenSubtitlesManyPages(_FakeOpenSubtitlesClient):
     """Upstream reports more pages than we expose to the client."""
 
-    def search(self, query, languages="", page=1, per_page=10):
-        out = super().search(query, languages=languages, page=page, per_page=per_page)
+    def search(self, query, languages="", page=1, per_page=10, *, year=None, imdb_id=None, **kwargs):
+        out = super().search(
+            query,
+            languages=languages,
+            page=page,
+            per_page=per_page,
+            year=year,
+            imdb_id=imdb_id,
+            **kwargs,
+        )
         out = dict(out)
         out["total_pages"] = 50
         return out
@@ -179,16 +194,168 @@ def test_opensubtitles_search_accepts_per_page(client, os_env_configured, monkey
     assert _FakeOpenSubtitlesClient.last_search["per_page"] == 50
 
 
-class _FakeMultiFilePerSubtitle(_FakeOpenSubtitlesClient):
-    """Each API subtitle has multiple files; flatten yields more rows than per_page."""
+def test_normalize_opensubtitles_imdb_id():
+    assert normalize_opensubtitles_imdb_id("tt0133093") == "0133093"
+    assert normalize_opensubtitles_imdb_id(1330933) == "1330933"
+    assert normalize_opensubtitles_imdb_id("bad") is None
 
-    def search(self, query, languages="", page=1, per_page=10):
+
+def test_opensubtitles_search_passes_year_and_imdb_to_client(client, os_env_configured, monkeypatch):
+    monkeypatch.setattr(
+        "srt_translator.api.opensubtitles_routes.OpenSubtitlesClient",
+        _FakeOpenSubtitlesClient,
+    )
+    monkeypatch.setattr(
+        "srt_translator.api.opensubtitles_routes.get_language_name_lookup",
+        lambda _c: {"en": "English"},
+    )
+    resp = client.post(
+        "/api/opensubtitles/search",
+        json={
+            "query": "The Matrix",
+            "language": "en",
+            "page": 1,
+            "year": 1999,
+            "imdbId": "tt0133093",
+        },
+    )
+    assert resp.status_code == 200
+    assert _FakeOpenSubtitlesClient.last_search["year"] == 1999
+    assert _FakeOpenSubtitlesClient.last_search["imdb_id"] == "0133093"
+
+
+def test_opensubtitles_search_ignores_out_of_range_year(client, os_env_configured, monkeypatch):
+    monkeypatch.setattr(
+        "srt_translator.api.opensubtitles_routes.OpenSubtitlesClient",
+        _FakeOpenSubtitlesClient,
+    )
+    monkeypatch.setattr(
+        "srt_translator.api.opensubtitles_routes.get_language_name_lookup",
+        lambda _c: {"en": "English"},
+    )
+    resp = client.post(
+        "/api/opensubtitles/search",
+        json={"query": "Test Movie", "language": "en", "year": 1700},
+    )
+    assert resp.status_code == 200
+    assert _FakeOpenSubtitlesClient.last_search.get("year") is None
+
+
+class _FakeSuggestionsDupFeature(_FakeOpenSubtitlesClient):
+    """Two subtitle rows share one feature id; third row is another feature."""
+
+    def search(self, query, languages="", page=1, per_page=10, *, year=None, imdb_id=None, **kwargs):
         assert query.strip()
         type(self).last_search = {
             "query": query,
             "languages": languages,
             "page": page,
             "per_page": per_page,
+            "year": year,
+            "imdb_id": imdb_id,
+        }
+        return {
+            "data": [
+                {
+                    "type": "subtitle",
+                    "relationships": {"feature": {"data": {"type": "feature", "id": "42"}}},
+                    "attributes": {
+                        "language": "en",
+                        "release": "R1",
+                        "files": [{"file_id": 1, "file_name": "a.srt"}],
+                        "feature_details": {"movie_name": "Same Movie", "year": 2019},
+                        "related_links": {"img_url": "https://example.com/p1.jpg"},
+                    },
+                },
+                {
+                    "type": "subtitle",
+                    "relationships": {"feature": {"data": {"type": "feature", "id": "42"}}},
+                    "attributes": {
+                        "language": "es",
+                        "release": "R2",
+                        "files": [{"file_id": 2, "file_name": "b.srt"}],
+                        "feature_details": {"movie_name": "Same Movie", "year": 2019},
+                    },
+                },
+                {
+                    "type": "subtitle",
+                    "relationships": {"feature": {"data": {"type": "feature", "id": "99"}}},
+                    "attributes": {
+                        "language": "en",
+                        "release": "R3",
+                        "files": [{"file_id": 3, "file_name": "c.srt"}],
+                        "feature_details": {"movie_name": "Other Movie", "year": 2021},
+                    },
+                },
+            ],
+        }
+
+
+def test_clean_work_search_query_strips_opensubtitles_year_patterns():
+    assert clean_work_search_query("1999 - The Matrix", 1999) == "The Matrix"
+    assert clean_work_search_query("The Matrix (1999)", 1999) == "The Matrix"
+    assert clean_work_search_query("The Matrix", 1999) == "The Matrix"
+    assert clean_work_search_query("  2010  -  Some Film ", 2010) == "Some Film"
+
+
+def test_distinct_work_suggestions_dedupes_same_feature():
+    c = _FakeSuggestionsDupFeature()
+    raw = c.search("x", languages="", page=1, per_page=50)
+    sugs = distinct_work_suggestions_from_subtitles(raw, limit=10)
+    assert len(sugs) == 2
+    assert sugs[0]["title"] == "Same Movie"
+    assert sugs[0]["searchQuery"] == "Same Movie"
+    assert sugs[0]["year"] == 2019
+    assert sugs[0]["posterUrl"] == "https://example.com/p1.jpg"
+    assert sugs[0]["featureId"] == "42"
+    assert sugs[1]["title"] == "Other Movie"
+    assert sugs[1]["searchQuery"] == "Other Movie"
+    assert sugs[1]["year"] == 2021
+    assert sugs[1]["featureId"] == "99"
+
+
+def test_opensubtitles_suggestions_ok(client, os_env_configured, monkeypatch):
+    monkeypatch.setattr(
+        "srt_translator.api.opensubtitles_routes.OpenSubtitlesClient",
+        _FakeSuggestionsDupFeature,
+    )
+    resp = client.post("/api/opensubtitles/suggestions", json={"query": "ab"})
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert len(data["suggestions"]) == 2
+    assert _FakeSuggestionsDupFeature.last_search["languages"] == ""
+    assert _FakeSuggestionsDupFeature.last_search["per_page"] == 50
+
+
+def test_opensubtitles_suggestions_rejects_short_query(client, os_env_configured, monkeypatch):
+    monkeypatch.setattr(
+        "srt_translator.api.opensubtitles_routes.OpenSubtitlesClient",
+        _FakeOpenSubtitlesClient,
+    )
+    resp = client.post("/api/opensubtitles/suggestions", json={"query": "a"})
+    assert resp.status_code == 400
+
+
+def test_opensubtitles_suggestions_503_without_credentials(client, monkeypatch):
+    monkeypatch.delenv("OPENSUBTITLES_API_KEY", raising=False)
+    monkeypatch.delenv("OPENSUBTITLES_USERNAME", raising=False)
+    monkeypatch.delenv("OPENSUBTITLES_PASSWORD", raising=False)
+    resp = client.post("/api/opensubtitles/suggestions", json={"query": "ab"})
+    assert resp.status_code == 503
+
+
+class _FakeMultiFilePerSubtitle(_FakeOpenSubtitlesClient):
+    """Each API subtitle has multiple files; flatten yields more rows than per_page."""
+
+    def search(self, query, languages="", page=1, per_page=10, *, year=None, imdb_id=None, **kwargs):
+        assert query.strip()
+        type(self).last_search = {
+            "query": query,
+            "languages": languages,
+            "page": page,
+            "per_page": per_page,
+            "year": year,
+            "imdb_id": imdb_id,
         }
         data_items = []
         for i in range(5):
@@ -700,6 +867,34 @@ def test_poster_image_proxies_allowed_host(client, monkeypatch):
     assert resp.status_code == 200
     assert resp.data.startswith(b"\xff\xd8\xff")
     assert "image" in (resp.headers.get("Content-Type") or "").lower()
+
+
+def test_poster_image_allows_amazon_imdb_style_host(client, monkeypatch):
+    import urllib.request
+
+    from srt_translator.api import opensubtitles_routes as routes_mod
+
+    class FakeResp:
+        headers = {"Content-Type": "image/jpeg"}
+
+        def read(self, n=65536):
+            if getattr(self, "_done", False):
+                return b""
+            self._done = True
+            return b"\xff\xd8\xff\xe0"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: FakeResp())
+    monkeypatch.setattr(routes_mod, "_POSTER_TIMEOUT_SEC", 5)
+
+    u = urllib.parse.quote("https://m.media-amazon.com/images/M/poster.jpg", safe="")
+    resp = client.get(f"/api/opensubtitles/poster-image?url={u}")
+    assert resp.status_code == 200
 
 
 def test_maybe_absolutize_opensubtitles_poster_paths():
