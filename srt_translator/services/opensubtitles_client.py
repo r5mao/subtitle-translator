@@ -396,6 +396,20 @@ def _tmdb_first_poster_from_images_payload(payload: Any) -> Optional[str]:
     return None
 
 
+def _tmdb_first_backdrop_from_images_payload(payload: Any) -> Optional[str]:
+    """Widescreen still for scene-style preview (TMDb backdrops)."""
+    backdrops = payload.get("backdrops") if isinstance(payload, dict) else None
+    if not isinstance(backdrops, list):
+        return None
+    for bd in backdrops:
+        if not isinstance(bd, dict):
+            continue
+        fp = bd.get("file_path")
+        if isinstance(fp, str) and fp.startswith("/"):
+            return f"https://image.tmdb.org/t/p/w780{fp}"
+    return None
+
+
 def _tmdb_fetch_images_payload(tid: int, kind: str, api_key: str) -> Optional[dict[str, Any]]:
     qs = urllib.parse.urlencode({"api_key": api_key})
     url = f"https://api.themoviedb.org/3/{kind}/{tid}/images?{qs}"
@@ -416,29 +430,32 @@ def _tmdb_fetch_images_payload(tid: int, kind: str, api_key: str) -> Optional[di
     return raw if isinstance(raw, dict) else None
 
 
-def _tmdb_poster_url_for_id(tmdb_raw: Any, cache: dict[int, Optional[str]]) -> Optional[str]:
-    """Optional poster via TMDb when OpenSubtitles only provides tmdb_id. Uses TMDB_API_KEY env."""
+def _tmdb_poster_and_backdrop_for_id(
+    tmdb_raw: Any, cache: dict[int, tuple[Optional[str], Optional[str]]]
+) -> tuple[Optional[str], Optional[str]]:
+    """Poster (w185) and backdrop (w780) from one TMDb images request per id. Uses TMDB_API_KEY env."""
     api_key = (os.environ.get("TMDB_API_KEY") or "").strip()
     if not api_key:
-        return None
+        return (None, None)
     try:
         tid = int(tmdb_raw)
     except (TypeError, ValueError):
-        return None
+        return (None, None)
     if tid <= 0:
-        return None
+        return (None, None)
     if tid in cache:
         return cache[tid]
     for kind in ("movie", "tv"):
         payload = _tmdb_fetch_images_payload(tid, kind, api_key)
         if not payload:
             continue
-        u = _tmdb_first_poster_from_images_payload(payload)
-        if u:
-            cache[tid] = u
-            return u
-    cache[tid] = None
-    return None
+        poster = _tmdb_first_poster_from_images_payload(payload)
+        backdrop = _tmdb_first_backdrop_from_images_payload(payload)
+        if poster or backdrop:
+            cache[tid] = (poster, backdrop)
+            return cache[tid]
+    cache[tid] = (None, None)
+    return (None, None)
 
 
 def _coerce_related_links(raw: Any) -> Any:
@@ -606,7 +623,7 @@ def flatten_subtitle_results(
         return rows
 
     included_index = _included_resource_index(api_json.get("included"))
-    tmdb_poster_cache: dict[int, Optional[str]] = {}
+    tmdb_media_cache: dict[int, tuple[Optional[str], Optional[str]]] = {}
 
     for item in items:
         if not isinstance(item, dict):
@@ -648,11 +665,14 @@ def flatten_subtitle_results(
             poster_url = _deep_find_image_url_in_payload(attr, feat)
         if poster_url:
             poster_url = _maybe_absolutize_opensubtitles_image_url(poster_url) or poster_url
-        if not poster_url:
-            poster_url = _tmdb_poster_url_for_id(
-                feat.get("tmdb_id") or feat.get("parent_tmdb_id"),
-                tmdb_poster_cache,
-            )
+        backdrop_url: Optional[str] = None
+        tmdb_raw = feat.get("tmdb_id") or feat.get("parent_tmdb_id")
+        if tmdb_raw is not None:
+            tmdb_poster, tmdb_backdrop = _tmdb_poster_and_backdrop_for_id(tmdb_raw, tmdb_media_cache)
+            if not poster_url and tmdb_poster:
+                poster_url = tmdb_poster
+            if tmdb_backdrop:
+                backdrop_url = tmdb_backdrop
 
         for f in files:
             if not isinstance(f, dict):
@@ -694,6 +714,7 @@ def flatten_subtitle_results(
                     "machineTranslated": bool(machine) if machine is not None else None,
                     "fromTrusted": bool(trusted) if trusted is not None else None,
                     "posterUrl": poster_url,
+                    "backdropUrl": backdrop_url,
                 }
             )
 

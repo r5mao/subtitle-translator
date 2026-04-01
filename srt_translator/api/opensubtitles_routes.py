@@ -26,7 +26,10 @@ from srt_translator.services.fetched_subtitle_file import (
     is_valid_fetched_id,
     resolve_fetched_subtitle_file,
 )
-from srt_translator.services.subtitle_parser import SubtitleParser
+from srt_translator.services.subtitle_preview import (
+    build_subtitle_preview_json,
+    decode_subtitle_bytes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -206,9 +209,9 @@ def register_opensubtitles_routes(api_bp):
             logger.warning("Fetched download read error: %s", e)
             return jsonify({"error": "Could not read subtitle file"}), 500
 
-    @api_bp.route("/opensubtitles/fetched/<fetched_id>/preview", methods=["GET"])
+    @api_bp.route("/opensubtitles/fetched/<fetched_id>/preview", methods=["GET", "POST"])
     def opensubtitles_fetched_preview(fetched_id):
-        """First subtitle cue text lines for UI preview (JSON)."""
+        """First cue preview: GET original-only; POST adds translation/pinyin from body."""
         if not is_valid_fetched_id(fetched_id):
             return jsonify({"error": "Invalid fetched subtitle id"}), 400
         resolved = resolve_fetched_subtitle_file(fetched_id)
@@ -221,29 +224,48 @@ def register_opensubtitles_routes(api_bp):
         except OSError as e:
             logger.warning("Fetched preview read error: %s", e)
             return jsonify({"error": "Could not read subtitle file"}), 500
-        content = None
-        for encoding in ("utf-8", "utf-8-sig", "latin-1", "cp1252"):
-            try:
-                content = raw.decode(encoding)
-                break
-            except UnicodeDecodeError:
-                continue
+        content = decode_subtitle_bytes(raw)
         if content is None:
-            return jsonify({"sampleLines": []})
-        try:
-            fmt, parsed = SubtitleParser.parse(content)
-        except ValueError:
-            return jsonify({"sampleLines": []})
-        lines: list[str] = []
-        if fmt == "srt" and parsed:
-            first = parsed[0]
-            lines = list(first.get("text_lines") or [])
-        elif fmt == "ass" and isinstance(parsed, dict) and parsed.get("dialogues"):
-            t = (parsed["dialogues"][0].get("text") or "").strip()
-            if t:
-                lines = [re.sub(r"\{[^}]*\}", "", t).strip() or t]
-        elif fmt == "sub" and isinstance(parsed, dict) and parsed.get("subs"):
-            t = (parsed["subs"][0].get("text") or "").strip()
-            if t:
-                lines = [t]
-        return jsonify({"sampleLines": lines[:4]})
+            empty = {
+                "sampleLines": [],
+                "originalLines": [],
+                "translatedLines": None,
+                "pinyinLines": None,
+                "layout": "single",
+                "format": "unknown",
+            }
+            return jsonify(empty)
+        if request.method == "GET":
+            return jsonify(
+                build_subtitle_preview_json(
+                    content,
+                    source_language="",
+                    target_language="",
+                    dual_language=False,
+                    wants_translate=False,
+                )
+            )
+        body = request.get_json(silent=True) or {}
+        src = (body.get("sourceLanguage") or "").strip()
+        tgt = (body.get("targetLanguage") or "").strip()
+        dual = str(body.get("dualLanguage", "false")).strip().lower() in (
+            "true",
+            "on",
+            "1",
+            "yes",
+        )
+        wants = str(body.get("wantsTranslate", "true")).strip().lower() in (
+            "true",
+            "on",
+            "1",
+            "yes",
+        )
+        return jsonify(
+            build_subtitle_preview_json(
+                content,
+                source_language=src,
+                target_language=tgt,
+                dual_language=dual,
+                wants_translate=wants,
+            )
+        )

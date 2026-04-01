@@ -200,11 +200,73 @@ def test_opensubtitles_fetched_preview_json(client, os_env_configured, monkeypat
     assert "sampleLines" in data
     assert isinstance(data["sampleLines"], list)
     assert data["sampleLines"] and "Hello world" in data["sampleLines"][0]
+    assert data.get("originalLines") == data["sampleLines"]
+    assert data.get("translatedLines") is None
     temp_dir = tempfile.gettempdir()
     for f in os.listdir(temp_dir):
         if f.startswith(f"{fid}_"):
             os.remove(os.path.join(temp_dir, f))
             break
+
+
+def test_opensubtitles_fetched_preview_post_translated(client, os_env_configured, monkeypatch, patch_translator):
+    monkeypatch.setattr(
+        "srt_translator.api.opensubtitles_routes.OpenSubtitlesClient",
+        _FakeOpenSubtitlesClient,
+    )
+    resp = client.post("/api/opensubtitles/fetch", json={"file_id": "999001"})
+    fid = resp.get_json()["fetchedId"]
+    try:
+        prev = client.post(
+            f"/api/opensubtitles/fetched/{fid}/preview",
+            json={
+                "sourceLanguage": "en",
+                "targetLanguage": "zh-cn",
+                "dualLanguage": True,
+                "wantsTranslate": True,
+            },
+        )
+        assert prev.status_code == 200
+        data = prev.get_json()
+        assert data["translatedLines"]
+        assert "你好" in data["translatedLines"][0]
+        assert data.get("pinyinLines") is None
+    finally:
+        temp_dir = tempfile.gettempdir()
+        for f in os.listdir(temp_dir):
+            if f.startswith(f"{fid}_"):
+                os.remove(os.path.join(temp_dir, f))
+                break
+
+
+def test_opensubtitles_fetched_preview_post_pinyin_target(client, os_env_configured, monkeypatch, patch_translator):
+    monkeypatch.setattr(
+        "srt_translator.api.opensubtitles_routes.OpenSubtitlesClient",
+        _FakeOpenSubtitlesClient,
+    )
+    resp = client.post("/api/opensubtitles/fetch", json={"file_id": "999001"})
+    fid = resp.get_json()["fetchedId"]
+    try:
+        prev = client.post(
+            f"/api/opensubtitles/fetched/{fid}/preview",
+            json={
+                "sourceLanguage": "en",
+                "targetLanguage": "zh-cn-pinyin",
+                "dualLanguage": False,
+                "wantsTranslate": True,
+            },
+        )
+        assert prev.status_code == 200
+        data = prev.get_json()
+        assert data["translatedLines"]
+        assert data.get("pinyinLines")
+        assert len(data["pinyinLines"]) == len(data["translatedLines"])
+    finally:
+        temp_dir = tempfile.gettempdir()
+        for f in os.listdir(temp_dir):
+            if f.startswith(f"{fid}_"):
+                os.remove(os.path.join(temp_dir, f))
+                break
 
 
 def test_translate_with_fetched_id(client, patch_translator, monkeypatch):
@@ -560,7 +622,12 @@ def test_tmdb_poster_api_and_cdn_url_construction(monkeypatch):
 
     class FakeResp:
         def read(self):
-            return json.dumps({"posters": [{"file_path": "/movie/poster1.jpg"}]}).encode("utf-8")
+            return json.dumps(
+                {
+                    "posters": [{"file_path": "/movie/poster1.jpg"}],
+                    "backdrops": [{"file_path": "/movie/backdrop1.jpg"}],
+                }
+            ).encode("utf-8")
 
         def __enter__(self):
             return self
@@ -591,6 +658,7 @@ def test_tmdb_poster_api_and_cdn_url_construction(monkeypatch):
     assert seen[0].startswith("https://api.themoviedb.org/3/movie/999/images?")
     assert "api_key=k" in seen[0]
     assert rows[0]["posterUrl"] == "https://image.tmdb.org/t/p/w185/movie/poster1.jpg"
+    assert rows[0]["backdropUrl"] == "https://image.tmdb.org/t/p/w780/movie/backdrop1.jpg"
 
 
 def test_flatten_poster_from_included_movie_resource():

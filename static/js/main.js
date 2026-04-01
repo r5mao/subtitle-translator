@@ -98,9 +98,14 @@ const translateToOtherLang = document.getElementById('translateToOtherLang');
 const translateOnlyFields = document.getElementById('translateOnlyFields');
 const translateToggleWrap = document.getElementById('translateToggleWrap');
 const subtitlePreviewPanel = document.getElementById('subtitlePreviewPanel');
-const subtitlePreviewPoster = document.getElementById('subtitlePreviewPoster');
-const subtitlePreviewLine1 = document.getElementById('subtitlePreviewLine1');
-const subtitlePreviewLine2 = document.getElementById('subtitlePreviewLine2');
+const subtitlePreviewBg = document.getElementById('subtitlePreviewBg');
+const subtitlePreviewOrig = document.getElementById('subtitlePreviewOrig');
+const subtitlePreviewTrans = document.getElementById('subtitlePreviewTrans');
+const subtitlePreviewPinyin = document.getElementById('subtitlePreviewPinyin');
+let lastPreviewRow = null;
+let previewRequestSeq = 0;
+let previewAbort = null;
+let previewDebounceTimer = null;
 const downloadSuccessMessage = document.getElementById('downloadSuccessMessage');
 const targetLanguage = document.getElementById('targetLanguage');
 const dualLanguage = document.getElementById('dualLanguage');
@@ -134,6 +139,7 @@ function clearOpenSubtitlesSelection() {
     fetchedLabel = '';
     selectedOsFileId = null;
     fetchInProgressFileId = null;
+    lastPreviewRow = null;
     hideSubtitlePreview();
     validateLanguages();
 }
@@ -150,10 +156,46 @@ function releaseFetchedAfterTranslate() {
 
 function hideSubtitlePreview() {
     subtitlePreviewPanel.hidden = true;
-    subtitlePreviewPoster.removeAttribute('src');
-    subtitlePreviewPoster.hidden = true;
-    subtitlePreviewLine1.textContent = '';
-    subtitlePreviewLine2.textContent = '';
+    subtitlePreviewBg.removeAttribute('src');
+    subtitlePreviewBg.hidden = true;
+    subtitlePreviewOrig.textContent = '';
+    subtitlePreviewTrans.textContent = '';
+    subtitlePreviewTrans.hidden = true;
+    subtitlePreviewPinyin.textContent = '';
+    subtitlePreviewPinyin.hidden = true;
+}
+
+function applyPreviewPayload(data) {
+    const orig = Array.isArray(data.originalLines)
+        ? data.originalLines
+        : Array.isArray(data.sampleLines)
+          ? data.sampleLines
+          : [];
+    subtitlePreviewOrig.textContent = orig.length ? orig.join('\n') : '—';
+    const trans = data.translatedLines;
+    if (Array.isArray(trans) && trans.length) {
+        subtitlePreviewTrans.textContent = trans.join('\n');
+        subtitlePreviewTrans.hidden = false;
+    } else {
+        subtitlePreviewTrans.textContent = '';
+        subtitlePreviewTrans.hidden = true;
+    }
+    const pin = data.pinyinLines;
+    if (Array.isArray(pin) && pin.length) {
+        subtitlePreviewPinyin.textContent = pin.join('\n');
+        subtitlePreviewPinyin.hidden = false;
+    } else {
+        subtitlePreviewPinyin.textContent = '';
+        subtitlePreviewPinyin.hidden = true;
+    }
+}
+
+function scheduleSubtitlePreviewRefresh() {
+    if (!fetchedId || !lastPreviewRow) return;
+    clearTimeout(previewDebounceTimer);
+    previewDebounceTimer = setTimeout(() => {
+        void refreshSubtitlePreview(lastPreviewRow);
+    }, 320);
 }
 
 function wantsTranslate() {
@@ -197,7 +239,10 @@ function syncSubtitleSourcePanels() {
     syncTranslateToggleVisibility();
 }
 
-translateToOtherLang.addEventListener('change', syncTranslateToggleVisibility);
+translateToOtherLang.addEventListener('change', () => {
+    syncTranslateToggleVisibility();
+    scheduleSubtitlePreviewRefresh();
+});
 
 sourceSearch.addEventListener('change', syncSubtitleSourcePanels);
 sourceUpload.addEventListener('change', syncSubtitleSourcePanels);
@@ -376,26 +421,45 @@ async function refreshSubtitlePreview(row) {
         hideSubtitlePreview();
         return;
     }
-    const url = normalizeHttpUrl(row && row.posterUrl);
+    const bgRaw = (row && row.backdropUrl) || (row && row.posterUrl);
+    const url = normalizeHttpUrl(bgRaw);
     if (url && /^https?:\/\//i.test(url)) {
-        subtitlePreviewPoster.src = posterProxySrc(url);
-        subtitlePreviewPoster.hidden = false;
+        subtitlePreviewBg.src = posterProxySrc(url);
+        subtitlePreviewBg.hidden = false;
     } else {
-        subtitlePreviewPoster.removeAttribute('src');
-        subtitlePreviewPoster.hidden = true;
+        subtitlePreviewBg.removeAttribute('src');
+        subtitlePreviewBg.hidden = true;
     }
+    previewRequestSeq += 1;
+    const seq = previewRequestSeq;
+    if (previewAbort) previewAbort.abort();
+    previewAbort = new AbortController();
     try {
         const prev = await fetch(
             `${API}/api/opensubtitles/fetched/${encodeURIComponent(fetchedId)}/preview`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sourceLanguage: sourceLanguage.value,
+                    targetLanguage: targetLanguage.value,
+                    dualLanguage: dualLanguage.checked,
+                    wantsTranslate: wantsTranslate(),
+                }),
+                signal: previewAbort.signal,
+            },
         );
+        if (seq !== previewRequestSeq) return;
         const data = await prev.json().catch(() => ({}));
-        const lines = Array.isArray(data.sampleLines) ? data.sampleLines : [];
-        subtitlePreviewLine1.textContent = lines[0] || fetchedLabel || '—';
-        subtitlePreviewLine2.textContent = lines[1] || '';
+        if (!prev.ok) throw new Error(data.error || 'Preview failed');
+        applyPreviewPayload(data);
         subtitlePreviewPanel.hidden = false;
-    } catch {
-        subtitlePreviewLine1.textContent = fetchedLabel || 'Subtitle ready';
-        subtitlePreviewLine2.textContent = '';
+    } catch (e) {
+        if (e.name === 'AbortError') return;
+        if (seq !== previewRequestSeq) return;
+        subtitlePreviewOrig.textContent = fetchedLabel || 'Subtitle ready';
+        subtitlePreviewTrans.hidden = true;
+        subtitlePreviewPinyin.hidden = true;
         subtitlePreviewPanel.hidden = false;
     }
 }
@@ -489,6 +553,7 @@ async function selectSubtitleFile(fileId, row) {
         selectedOsFileId = fid;
         applySourceFromOpenSubtitlesRow(row.language);
         osSearchStatus.textContent = '';
+        lastPreviewRow = row;
         void refreshSubtitlePreview(row);
     } catch (e) {
         console.error(e);
@@ -957,8 +1022,14 @@ async function runTranslation() {
     }
 }
 
-sourceLanguage.addEventListener('change', validateLanguages);
-targetLanguage.addEventListener('change', validateLanguages);
+function onLanguageOrDualChange() {
+    validateLanguages();
+    scheduleSubtitlePreviewRefresh();
+}
+
+sourceLanguage.addEventListener('change', onLanguageOrDualChange);
+targetLanguage.addEventListener('change', onLanguageOrDualChange);
+dualLanguage.addEventListener('change', onLanguageOrDualChange);
 
 function validateLanguages() {
     const source = sourceLanguage.value;
