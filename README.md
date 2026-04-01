@@ -15,7 +15,13 @@ A web application for translating subtitle files between languages using Google 
 - CORS support for frontend-backend integration
 - Error handling and logging
 
-<img width="2549" height="1328" alt="image" src="https://github.com/user-attachments/assets/70f173d9-b681-4f9a-8e7f-ae934e24b0a4" />
+## Screenshots
+
+Captured with [Playwright](https://playwright.dev/python/) against a local Flask run (`python scripts/capture_readme_screenshots.py` after `pip install playwright` and `playwright install chromium`). The examples below use **upload** mode; if OpenSubtitles is not configured, **Search OpenSubtitles** is disabled.
+
+| Desktop (1280×900 viewport) | Narrow / mobile-style (420px wide) |
+|----------------------------|-------------------------------------|
+| ![SRT Subtitle Translator — desktop](docs/images/ui-desktop.png) | ![SRT Subtitle Translator — mobile width](docs/images/ui-mobile.png) |
 
 ## Requirements
 
@@ -135,6 +141,9 @@ You do **not** need to start Flask or a static server; tests use Flask’s in-pr
 project root/
 ├── app.py                          # Entry: run Flask
 ├── index.html                      # Frontend UI
+├── docs/images/                    # README screenshots (regenerate via scripts/)
+├── scripts/
+│   └── capture_readme_screenshots.py
 ├── static/                         # CSS, JS, favicon
 ├── srt_translator/
 │   ├── __init__.py                 # create_app(), loads .env from project root
