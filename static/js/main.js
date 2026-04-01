@@ -138,6 +138,16 @@ function clearOpenSubtitlesSelection() {
     validateLanguages();
 }
 
+/** After translate, server removes temp file; clear handles without hiding preview or search results. */
+function releaseFetchedAfterTranslate() {
+    fetchedId = null;
+    fetchedLabel = '';
+    selectedOsFileId = null;
+    fetchInProgressFileId = null;
+    validateLanguages();
+    filterAndRenderResults();
+}
+
 function hideSubtitlePreview() {
     subtitlePreviewPanel.hidden = true;
     subtitlePreviewPoster.removeAttribute('src');
@@ -906,19 +916,12 @@ async function runTranslation() {
             durationDiv.textContent = '';
         }
 
-        if (isSearchMode() && fetchedId) {
-            clearOpenSubtitlesSelection();
-            rawSearchResults = [];
-            osLangChips.hidden = true;
-            osResultsTable.hidden = true;
-            osResultsBody.innerHTML = '';
-            osPager.hidden = true;
-            osTotalPages = null;
-            osTotalCount = null;
+        if (isSearchMode()) {
+            releaseFetchedAfterTranslate();
         }
 
         downloadSection.style.display = 'block';
-        downloadSection.scrollIntoView({ behavior: 'smooth' });
+        downloadSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     } catch (error) {
         console.error('Translation error:', error);
         let msg = error.message || String(error);

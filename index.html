@@ -91,47 +91,20 @@
             </div>
 
             <div id="languageSection" class="language-section form-group">
-                <div class="language-row">
-                    <div class="language-field">
-                        <label for="sourceLanguage">Original language</label>
-                        <select id="sourceLanguage" name="sourceLanguage" required>
-                            <option value="en" selected>English</option>
-                            <option value="es">Spanish</option>
-                            <option value="fr">French</option>
-                            <option value="de">German</option>
-                            <option value="it">Italian</option>
-                            <option value="pt">Portuguese</option>
-                            <option value="ru">Russian</option>
-                            <option value="zh-cn">Chinese (Simplified)</option>
-                            <option value="zh-tw">Chinese (Traditional)</option>
-                            <option value="ja">Japanese</option>
-                            <option value="ko">Korean</option>
-                            <option value="ar">Arabic</option>
-                            <option value="hi">Hindi</option>
-                            <option value="nl">Dutch</option>
-                            <option value="sv">Swedish</option>
-                            <option value="da">Danish</option>
-                            <option value="no">Norwegian</option>
-                            <option value="fi">Finnish</option>
-                            <option value="pl">Polish</option>
-                            <option value="tr">Turkish</option>
-                            <option value="he">Hebrew</option>
-                        </select>
-                    </div>
-                    <div class="language-field language-field-translate" id="translateToggleWrap">
-                        <span class="label-like">Translation</span>
-                        <label class="inline-check translate-to-other-label">
+                <div class="language-card">
+                    <h2 class="language-card-title">Languages</h2>
+                    <p class="language-card-subtitle">Original filters OpenSubtitles search when “Search all languages” is off. It also updates when you pick a search result.</p>
+                    <div class="language-translate-toggle-row" id="translateToggleWrap">
+                        <label class="inline-check translate-to-other-label language-toggle-pill">
                             <input type="checkbox" id="translateToOtherLang" checked>
                             Translate to another language
                         </label>
                     </div>
-                </div>
-                <div id="translateOnlyFields" class="translate-only-fields">
-                    <div class="language-row language-row-target-dual">
-                        <div class="language-field">
-                            <label for="targetLanguage">Target language</label>
-                            <select id="targetLanguage" name="targetLanguage" required>
-                                <option value="en">English</option>
+                    <div class="language-grid">
+                        <div class="language-field language-field-original">
+                            <label for="sourceLanguage">Original language</label>
+                            <select id="sourceLanguage" name="sourceLanguage" required>
+                                <option value="en" selected>English</option>
                                 <option value="es">Spanish</option>
                                 <option value="fr">French</option>
                                 <option value="de">German</option>
@@ -140,8 +113,6 @@
                                 <option value="ru">Russian</option>
                                 <option value="zh-cn">Chinese (Simplified)</option>
                                 <option value="zh-tw">Chinese (Traditional)</option>
-                                <option value="zh-cn-pinyin" selected>Chinese (Simplified) + Pinyin</option>
-                                <option value="zh-tw-pinyin">Chinese (Traditional) + Pinyin</option>
                                 <option value="ja">Japanese</option>
                                 <option value="ko">Korean</option>
                                 <option value="ar">Arabic</option>
@@ -156,11 +127,42 @@
                                 <option value="he">Hebrew</option>
                             </select>
                         </div>
-                        <div class="language-field language-field-dual">
-                            <label class="inline-check dual-inline-label">
-                                <input type="checkbox" id="dualLanguage" name="dualLanguage" checked value="true"/>
-                                Show original (top) and translation (bottom)
-                            </label>
+                        <div id="translateOnlyFields" class="translate-only-fields">
+                            <div class="language-field">
+                                <label for="targetLanguage">Target language</label>
+                                <select id="targetLanguage" name="targetLanguage" required>
+                                    <option value="en">English</option>
+                                    <option value="es">Spanish</option>
+                                    <option value="fr">French</option>
+                                    <option value="de">German</option>
+                                    <option value="it">Italian</option>
+                                    <option value="pt">Portuguese</option>
+                                    <option value="ru">Russian</option>
+                                    <option value="zh-cn">Chinese (Simplified)</option>
+                                    <option value="zh-tw">Chinese (Traditional)</option>
+                                    <option value="zh-cn-pinyin" selected>Chinese (Simplified) + Pinyin</option>
+                                    <option value="zh-tw-pinyin">Chinese (Traditional) + Pinyin</option>
+                                    <option value="ja">Japanese</option>
+                                    <option value="ko">Korean</option>
+                                    <option value="ar">Arabic</option>
+                                    <option value="hi">Hindi</option>
+                                    <option value="nl">Dutch</option>
+                                    <option value="sv">Swedish</option>
+                                    <option value="da">Danish</option>
+                                    <option value="no">Norwegian</option>
+                                    <option value="fi">Finnish</option>
+                                    <option value="pl">Polish</option>
+                                    <option value="tr">Turkish</option>
+                                    <option value="he">Hebrew</option>
+                                </select>
+                            </div>
+                            <details class="language-advanced">
+                                <summary class="language-advanced-summary">Advanced output options</summary>
+                                <label class="inline-check dual-inline-label">
+                                    <input type="checkbox" id="dualLanguage" name="dualLanguage" checked value="true"/>
+                                    Show original (top) and translation (bottom)
+                                </label>
+                            </details>
                         </div>
                     </div>
                 </div>
