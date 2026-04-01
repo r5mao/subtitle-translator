@@ -1,3 +1,4 @@
+import gc
 import os
 import tempfile
 import urllib.parse
@@ -151,6 +152,59 @@ def test_opensubtitles_fetch_stores_temp_file(client, os_env_configured, monkeyp
     assert len(matches) == 1
     path = os.path.join(temp_dir, matches[0])
     os.remove(path)
+
+
+def test_opensubtitles_fetched_download_streams_file(client, os_env_configured, monkeypatch):
+    monkeypatch.setattr(
+        "srt_translator.api.opensubtitles_routes.OpenSubtitlesClient",
+        _FakeOpenSubtitlesClient,
+    )
+    resp = client.post("/api/opensubtitles/fetch", json={"file_id": "999001"})
+    assert resp.status_code == 200
+    fid = resp.get_json()["fetchedId"]
+    dl = client.get(f"/api/opensubtitles/fetched/{fid}/download")
+    assert dl.status_code == 200
+    assert b"1\n00:00:01,000" in dl.data or make_srt().split(b"\n")[0] in dl.data
+    assert "attachment" in (dl.headers.get("Content-Disposition") or "").lower()
+    temp_dir = tempfile.gettempdir()
+    matches = [f for f in os.listdir(temp_dir) if f.startswith(f"{fid}_")]
+    assert len(matches) == 1
+    del dl
+    gc.collect()
+    try:
+        os.remove(os.path.join(temp_dir, matches[0]))
+    except OSError:
+        pass
+
+
+def test_opensubtitles_fetched_download_404_unknown_id(client):
+    resp = client.get(f"/api/opensubtitles/fetched/{uuid.uuid4()}/download")
+    assert resp.status_code == 404
+
+
+def test_opensubtitles_fetched_download_400_bad_id(client):
+    resp = client.get("/api/opensubtitles/fetched/not-a-uuid/download")
+    assert resp.status_code == 400
+
+
+def test_opensubtitles_fetched_preview_json(client, os_env_configured, monkeypatch):
+    monkeypatch.setattr(
+        "srt_translator.api.opensubtitles_routes.OpenSubtitlesClient",
+        _FakeOpenSubtitlesClient,
+    )
+    resp = client.post("/api/opensubtitles/fetch", json={"file_id": "999001"})
+    fid = resp.get_json()["fetchedId"]
+    prev = client.get(f"/api/opensubtitles/fetched/{fid}/preview")
+    assert prev.status_code == 200
+    data = prev.get_json()
+    assert "sampleLines" in data
+    assert isinstance(data["sampleLines"], list)
+    assert data["sampleLines"] and "Hello world" in data["sampleLines"][0]
+    temp_dir = tempfile.gettempdir()
+    for f in os.listdir(temp_dir):
+        if f.startswith(f"{fid}_"):
+            os.remove(os.path.join(temp_dir, f))
+            break
 
 
 def test_translate_with_fetched_id(client, patch_translator, monkeypatch):

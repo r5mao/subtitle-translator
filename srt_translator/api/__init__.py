@@ -8,6 +8,10 @@ from srt_translator.services.translation import (
 )
 from srt_translator.services.pinyin_helper import line_to_pinyin
 from srt_translator.services.subtitle_parser import SubtitleParser
+from srt_translator.services.fetched_subtitle_file import (
+    is_valid_fetched_id,
+    resolve_fetched_subtitle_file,
+)
 from srt_translator.services.srt_entry import SRTEntry
 import logging
 import uuid
@@ -122,16 +126,12 @@ def translate_srt():
     fetched_temp_path = None
 
     if fetched_id:
-        if not re.match(r'^[a-f0-9-]{36}$', fetched_id):
+        if not is_valid_fetched_id(fetched_id):
             return jsonify({'error': 'Invalid fetched subtitle id'}), 400
-        temp_dir = tempfile.gettempdir()
-        prefix = f"{fetched_id}_"
-        matches = [f for f in os.listdir(temp_dir) if f.startswith(prefix)]
-        if not matches:
+        resolved = resolve_fetched_subtitle_file(fetched_id)
+        if not resolved:
             return jsonify({'error': 'Fetched subtitle expired or not found. Search and select again.'}), 404
-        fname_key = matches[0]
-        fetched_temp_path = os.path.join(temp_dir, fname_key)
-        original_filename = fname_key[len(prefix):]
+        fetched_temp_path, original_filename = resolved
         try:
             with open(fetched_temp_path, 'rb') as f:
                 file_content = f.read()

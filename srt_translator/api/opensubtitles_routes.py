@@ -8,7 +8,7 @@ import urllib.parse
 import urllib.request
 import uuid
 
-from flask import Response, jsonify, request
+from flask import Response, jsonify, request, send_file
 
 from srt_translator.services.opensubtitles_client import (
     OpenSubtitlesClient,
@@ -22,6 +22,11 @@ from srt_translator.services.opensubtitles_client import (
 
 _ALLOWED_PER_PAGE = frozenset({10, 25, 50, 100})
 from srt_translator.services.opensubtitles_lang import ui_lang_to_opensubtitles
+from srt_translator.services.fetched_subtitle_file import (
+    is_valid_fetched_id,
+    resolve_fetched_subtitle_file,
+)
+from srt_translator.services.subtitle_parser import SubtitleParser
 
 logger = logging.getLogger(__name__)
 
@@ -180,3 +185,65 @@ def register_opensubtitles_routes(api_bp):
         except OpenSubtitlesError as e:
             logger.warning("OpenSubtitles fetch: %s", e)
             return jsonify({"error": str(e)}), 502
+
+    @api_bp.route("/opensubtitles/fetched/<fetched_id>/download", methods=["GET"])
+    def opensubtitles_fetched_download(fetched_id):
+        """Stream the temp file from a prior /opensubtitles/fetch; does not delete it."""
+        if not is_valid_fetched_id(fetched_id):
+            return jsonify({"error": "Invalid fetched subtitle id"}), 400
+        resolved = resolve_fetched_subtitle_file(fetched_id)
+        if not resolved:
+            return jsonify({"error": "Fetched subtitle expired or not found."}), 404
+        path, name = resolved
+        try:
+            return send_file(
+                path,
+                as_attachment=True,
+                download_name=name,
+                mimetype="application/octet-stream",
+            )
+        except OSError as e:
+            logger.warning("Fetched download read error: %s", e)
+            return jsonify({"error": "Could not read subtitle file"}), 500
+
+    @api_bp.route("/opensubtitles/fetched/<fetched_id>/preview", methods=["GET"])
+    def opensubtitles_fetched_preview(fetched_id):
+        """First subtitle cue text lines for UI preview (JSON)."""
+        if not is_valid_fetched_id(fetched_id):
+            return jsonify({"error": "Invalid fetched subtitle id"}), 400
+        resolved = resolve_fetched_subtitle_file(fetched_id)
+        if not resolved:
+            return jsonify({"error": "Fetched subtitle expired or not found."}), 404
+        path, _name = resolved
+        try:
+            with open(path, "rb") as f:
+                raw = f.read()
+        except OSError as e:
+            logger.warning("Fetched preview read error: %s", e)
+            return jsonify({"error": "Could not read subtitle file"}), 500
+        content = None
+        for encoding in ("utf-8", "utf-8-sig", "latin-1", "cp1252"):
+            try:
+                content = raw.decode(encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+        if content is None:
+            return jsonify({"sampleLines": []})
+        try:
+            fmt, parsed = SubtitleParser.parse(content)
+        except ValueError:
+            return jsonify({"sampleLines": []})
+        lines: list[str] = []
+        if fmt == "srt" and parsed:
+            first = parsed[0]
+            lines = list(first.get("text_lines") or [])
+        elif fmt == "ass" and isinstance(parsed, dict) and parsed.get("dialogues"):
+            t = (parsed["dialogues"][0].get("text") or "").strip()
+            if t:
+                lines = [re.sub(r"\{[^}]*\}", "", t).strip() or t]
+        elif fmt == "sub" and isinstance(parsed, dict) and parsed.get("subs"):
+            t = (parsed["subs"][0].get("text") or "").strip()
+            if t:
+                lines = [t]
+        return jsonify({"sampleLines": lines[:4]})
