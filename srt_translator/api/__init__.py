@@ -35,10 +35,36 @@ api_bp = Blueprint('api', __name__)
 translation_progress = {}
 
 
+def _ass_escape_plain(s: str) -> str:
+    return (s or '').replace('\\', '\\\\')
+
+
+def _ass_english_line(text: str) -> str:
+    return f"{{\\fs10}}{_ass_escape_plain(text)}{{\\r}}"
+
+
+def _ass_chinese_line(text: str) -> str:
+    return f"{{\\fs12}}{_ass_escape_plain(text)}{{\\r}}"
+
+
 def _ass_pinyin_line(pinyin_plain: str) -> str:
-    """Smaller font for pinyin in ASS; reset style after."""
-    escaped = pinyin_plain.replace('\\', '\\\\')
-    return f"{{\\fs10}}{escaped}{{\\r}}"
+    return f"{{\\fs8}}{_ass_escape_plain(pinyin_plain)}{{\\r}}"
+
+
+def _join_srt_text_lines(lines: list) -> str:
+    return ' '.join(x.strip() for x in (lines or []) if x.strip())
+
+
+def _collapse_ass_dialogue(text: str) -> str:
+    if not text:
+        return ''
+    return ' '.join(p.strip() for p in text.split(r'\N') if p.strip())
+
+
+def _collapse_sub_text(text: str) -> str:
+    if not text:
+        return ''
+    return ' '.join(p.strip() for p in re.split(r'[\r\n]+', text) if p.strip())
 
 # Routes will be registered here
 # @api_bp.route('/health')
@@ -225,9 +251,16 @@ def translate_srt():
             if use_pinyin and dual_language:
                 output_entries = []
                 for orig_dict, trans_entry in zip(parsed, translated_entries):
-                    chinese_lines = trans_entry.text_lines
-                    pinyin_lines = [_ass_pinyin_line(line_to_pinyin(cl)) for cl in chinese_lines]
-                    combined_lines = orig_dict['text_lines'] + chinese_lines + pinyin_lines
+                    en = _join_srt_text_lines(orig_dict['text_lines'])
+                    zh = _join_srt_text_lines(trans_entry.text_lines)
+                    pin = ' '.join(
+                        line_to_pinyin(cl) for cl in trans_entry.text_lines if cl.strip()
+                    )
+                    combined_lines = [
+                        _ass_english_line(en),
+                        _ass_chinese_line(zh),
+                        _ass_pinyin_line(pin),
+                    ]
                     output_entries.append({
                         'sequence_number': trans_entry.sequence_number,
                         'start_time': trans_entry.start_time,
@@ -238,21 +271,24 @@ def translate_srt():
             elif use_pinyin and not dual_language:
                 output_entries = []
                 for trans_entry in translated_entries:
-                    new_lines = []
-                    for cl in trans_entry.text_lines:
-                        new_lines.append(cl)
-                        new_lines.append(_ass_pinyin_line(line_to_pinyin(cl)))
+                    zh = _join_srt_text_lines(trans_entry.text_lines)
+                    pin = ' '.join(
+                        line_to_pinyin(cl) for cl in trans_entry.text_lines if cl.strip()
+                    )
                     output_entries.append({
                         'sequence_number': trans_entry.sequence_number,
                         'start_time': trans_entry.start_time,
                         'end_time': trans_entry.end_time,
-                        'text_lines': new_lines
+                        'text_lines': [_ass_chinese_line(zh), _ass_pinyin_line(pin)],
                     })
                 translated_content = SubtitleParser.srt_output_entries_to_minimal_ass(output_entries)
             elif dual_language:
                 output_entries = []
                 for orig_dict, trans_entry in zip(parsed, translated_entries):
-                    combined_lines = orig_dict['text_lines'] + trans_entry.text_lines
+                    combined_lines = [
+                        _join_srt_text_lines(orig_dict['text_lines']),
+                        _join_srt_text_lines(trans_entry.text_lines),
+                    ]
                     output_entries.append({
                         'sequence_number': trans_entry.sequence_number,
                         'start_time': trans_entry.start_time,
@@ -262,7 +298,12 @@ def translate_srt():
                 translated_content = SubtitleParser.to_srt(output_entries)
             else:
                 translated_content = SubtitleParser.to_srt([
-                    {'sequence_number': e.sequence_number, 'start_time': e.start_time, 'end_time': e.end_time, 'text_lines': e.text_lines}
+                    {
+                        'sequence_number': e.sequence_number,
+                        'start_time': e.start_time,
+                        'end_time': e.end_time,
+                        'text_lines': [_join_srt_text_lines(e.text_lines)] if e.text_lines else [''],
+                    }
                     for e in translated_entries
                 ])
             if use_pinyin:
@@ -287,21 +328,29 @@ def translate_srt():
             asyncio.run(do_translate_ass_async())
             if use_pinyin and dual_language:
                 combined_texts = [
-                    f"{orig}\\N{tran}\\N{_ass_pinyin_line(line_to_pinyin(tran))}"
+                    f"{_ass_english_line(_collapse_ass_dialogue(orig))}\\N"
+                    f"{_ass_chinese_line(_collapse_ass_dialogue(tran))}\\N"
+                    f"{_ass_pinyin_line(line_to_pinyin(_collapse_ass_dialogue(tran)))}"
                     for orig, tran in zip(texts, translated_texts)
                 ]
                 translated_content = SubtitleParser.to_ass(parsed, combined_texts)
             elif use_pinyin and not dual_language:
                 combined_texts = [
-                    f"{tran}\\N{_ass_pinyin_line(line_to_pinyin(tran))}"
+                    f"{_ass_chinese_line(_collapse_ass_dialogue(tran))}\\N"
+                    f"{_ass_pinyin_line(line_to_pinyin(_collapse_ass_dialogue(tran)))}"
                     for tran in translated_texts
                 ]
                 translated_content = SubtitleParser.to_ass(parsed, combined_texts)
             elif dual_language:
-                combined_texts = [f"{orig}\\N{tran}" for orig, tran in zip(texts, translated_texts)]
+                combined_texts = [
+                    f"{_ass_english_line(_collapse_ass_dialogue(orig))}\\N"
+                    f"{_ass_chinese_line(_collapse_ass_dialogue(tran))}"
+                    for orig, tran in zip(texts, translated_texts)
+                ]
                 translated_content = SubtitleParser.to_ass(parsed, combined_texts)
             else:
-                translated_content = SubtitleParser.to_ass(parsed, translated_texts)
+                combined_texts = [_ass_chinese_line(_collapse_ass_dialogue(t)) for t in translated_texts]
+                translated_content = SubtitleParser.to_ass(parsed, combined_texts)
             translated_filename = f"{base_name}_{target_lang}{'_dual' if dual_language else ''}.ass"
         elif fmt == 'sub':
             texts = [d['text'] for d in parsed['subs']]
@@ -321,21 +370,26 @@ def translate_srt():
             asyncio.run(do_translate_sub_async())
             if use_pinyin and dual_language:
                 combined_texts = [
-                    f"{orig}|{tran}|{line_to_pinyin(tran)}"
+                    f"{_collapse_sub_text(orig)}|{_collapse_sub_text(tran)}|"
+                    f"{line_to_pinyin(_collapse_sub_text(tran))}"
                     for orig, tran in zip(texts, translated_texts)
                 ]
                 translated_content = SubtitleParser.to_sub(parsed, combined_texts)
             elif use_pinyin and not dual_language:
                 combined_texts = [
-                    f"{tran}|{line_to_pinyin(tran)}"
+                    f"{_collapse_sub_text(tran)}|{line_to_pinyin(_collapse_sub_text(tran))}"
                     for tran in translated_texts
                 ]
                 translated_content = SubtitleParser.to_sub(parsed, combined_texts)
             elif dual_language:
-                combined_texts = [f"{orig}|{tran}" for orig, tran in zip(texts, translated_texts)]
+                combined_texts = [
+                    f"{_collapse_sub_text(orig)}|{_collapse_sub_text(tran)}"
+                    for orig, tran in zip(texts, translated_texts)
+                ]
                 translated_content = SubtitleParser.to_sub(parsed, combined_texts)
             else:
-                translated_content = SubtitleParser.to_sub(parsed, translated_texts)
+                combined_texts = [_collapse_sub_text(t) for t in translated_texts]
+                translated_content = SubtitleParser.to_sub(parsed, combined_texts)
             translated_filename = f"{base_name}_{target_lang}{'_dual' if dual_language else ''}.sub"
         else:
             raise ValueError('Unsupported subtitle format')

@@ -65,7 +65,8 @@ def test_translate_srt_pinyin_non_dual(client, patch_translator):
     assert dl.status_code == 200
     content = dl.data.decode('utf-8')
     assert 'Dialogue:' in content
-    assert '\\fs10' in content
+    assert '\\fs8' in content
+    assert '\\fs12' in content
     assert '你好，世界' in content
     assert 'nǐ' in content and 'hǎo' in content
 
@@ -80,7 +81,9 @@ def test_translate_srt_pinyin_dual(client, patch_translator):
     assert dl.status_code == 200
     content = dl.data.decode('utf-8')
     assert 'Dialogue:' in content
+    assert '\\fs8' in content
     assert '\\fs10' in content
+    assert '\\fs12' in content
     assert 'Hello world' in content
     assert '你好，世界' in content
     assert 'nǐ' in content
@@ -168,7 +171,9 @@ def test_translate_ass_pinyin_dual(client, patch_translator):
     dl = client.get(j['downloadUrl'])
     content = dl.data.decode('utf-8')
     assert '{\\fs10}' in content
-    assert 'Hello\\N你好' in content
+    assert '{\\fs12}' in content
+    assert '{\\fs8}' in content
+    assert 'Hello' in content and '你好' in content
     assert 'nǐ' in content
 
 
@@ -182,9 +187,8 @@ def test_translate_ass_dual(client, patch_translator):
     dl = client.get(j['downloadUrl'])
     assert dl.status_code == 200
     content = dl.data.decode('utf-8')
-    # ASS dual uses \N line break between original and translation
-    assert 'Hello\\N你好' in content
-    assert 'How are you?\\N你好吗？' in content
+    assert 'Hello' in content and '你好' in content
+    assert 'How are you?' in content and '你好吗？' in content
 
 
 def test_translate_sub_non_dual(client, patch_translator):

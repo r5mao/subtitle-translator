@@ -970,28 +970,28 @@ input[type="checkbox"] {
 
 .subtitle-preview-line {
     color: #fff;
-    font-size: 13px;
     line-height: 1.35;
     text-shadow: 0 1px 3px #000, 0 0 8px #000;
     margin: 0;
-    white-space: pre-line;
+    white-space: normal;
 }
 
 .subtitle-preview-orig {
+    font-size: 10px;
     opacity: 0.95;
-    margin-bottom: 4px;
+    margin-bottom: 2px;
 }
 
 .subtitle-preview-trans {
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
-    margin-top: 2px;
+    margin-top: 0;
 }
 
 .subtitle-preview-pinyin {
-    font-size: clamp(0.78rem, 2vw, 0.92rem);
+    font-size: 8px;
     opacity: 0.9;
-    margin-top: 4px;
+    margin-top: 2px;
     font-weight: 500;
 }
 

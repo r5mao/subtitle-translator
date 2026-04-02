@@ -202,10 +202,10 @@ function applyPreviewPayload(data) {
         : Array.isArray(data.sampleLines)
           ? data.sampleLines
           : [];
-    subtitlePreviewOrig.textContent = orig.length ? orig.join('\n') : '—';
+    subtitlePreviewOrig.textContent = orig.length ? orig.join(' ') : '—';
     const trans = data.translatedLines;
     if (Array.isArray(trans) && trans.length) {
-        subtitlePreviewTrans.textContent = trans.join('\n');
+        subtitlePreviewTrans.textContent = trans.join(' ');
         subtitlePreviewTrans.hidden = false;
     } else {
         subtitlePreviewTrans.textContent = '';
@@ -213,7 +213,7 @@ function applyPreviewPayload(data) {
     }
     const pin = data.pinyinLines;
     if (Array.isArray(pin) && pin.length) {
-        subtitlePreviewPinyin.textContent = pin.join('\n');
+        subtitlePreviewPinyin.textContent = pin.join(' ');
         subtitlePreviewPinyin.hidden = false;
     } else {
         subtitlePreviewPinyin.textContent = '';
