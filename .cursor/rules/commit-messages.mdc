@@ -1,0 +1,39 @@
+---
+description: Concise commit messages; capitalize subject; scale length to change size
+alwaysApply: true
+---
+
+# Commit messages
+
+When proposing, drafting, or editing git commit messages (including subject lines):
+
+- **Capitalize the subject**: start with a capital letter (after a Conventional Commit prefix, capitalize the word that begins the actual summary, e.g. `feat: Fix mobile overflow`).
+- **One sentence by default**: imperative mood. **No trailing period** on a single short subject.
+- **Multiple sentences**: if you use two (or more) sentences in the subject or body, **use periods** between them like normal prose.
+- **Length matches scope**: default to a **short** subject (~50 chars, max ~72 on the first line). For **larger or multi-file commits**, a longer subject and/or a **multi-line body** is fine when it genuinely helps—summarize the change set without marketing fluff or repeating the whole diff.
+- **No essays by default**: skip long explanations unless the commit is big or the *why* needs it.
+
+```text
+❌ BAD
+Refactor the subtitle search module to improve maintainability and add comprehensive unit tests for edge cases around pagination
+
+✅ GOOD
+Refactor subtitle search and add pagination tests
+```
+
+```text
+❌ BAD
+This commit updates the styles.css file to fix various layout issues on mobile devices and improve accessibility
+
+✅ GOOD
+Fix mobile layout and a11y in styles
+```
+
+```text
+✅ OK when scope is large (subject + body)
+Redesign search API and client.
+
+Split query building from HTTP handling. Update tests and OpenAPI examples.
+```
+
+If the user already uses a convention (e.g. Conventional Commits `feat:`, `fix:`), follow it while keeping the guidance above.
