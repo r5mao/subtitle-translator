@@ -909,7 +909,7 @@ input[type="checkbox"] {
 
 .subtitle-preview-line {
     color: #fff;
-    font-size: clamp(0.85rem, 2.2vw, 1rem);
+    font-size: 13px;
     line-height: 1.35;
     text-shadow: 0 1px 3px #000, 0 0 8px #000;
     margin: 0;
@@ -922,7 +922,7 @@ input[type="checkbox"] {
 }
 
 .subtitle-preview-trans {
-    font-size: clamp(0.88rem, 2.3vw, 1.05rem);
+    font-size: 13px;
     font-weight: 600;
     margin-top: 2px;
 }
