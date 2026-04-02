@@ -191,7 +191,14 @@
         <dialog id="translateConfirmDialog" class="confirm-dialog">
             <div class="confirm-dialog-inner">
                 <h3 class="confirm-dialog-title">Start translation?</h3>
-                <p id="translateConfirmSummary" class="confirm-dialog-body"></p>
+                <dl id="translateConfirmSummary" class="confirm-dialog-summary" aria-label="Translation summary">
+                    <dt class="confirm-summary-label">Subtitle file</dt>
+                    <dd class="confirm-summary-value confirm-summary-file" id="translateConfirmFile"></dd>
+                    <dt class="confirm-summary-label">From</dt>
+                    <dd class="confirm-summary-value" id="translateConfirmFrom"></dd>
+                    <dt class="confirm-summary-label">To</dt>
+                    <dd class="confirm-summary-value" id="translateConfirmTo"></dd>
+                </dl>
                 <div class="confirm-dialog-actions">
                     <button type="button" class="secondary-btn" id="translateConfirmCancel">Cancel</button>
                     <button type="button" class="translate-btn confirm-dialog-confirm" id="translateConfirmOk">Confirm</button>

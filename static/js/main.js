@@ -117,7 +117,9 @@ const dualLanguage = document.getElementById('dualLanguage');
 const translationForm = document.getElementById('translationForm');
 const translateBtn = document.getElementById('translateBtn');
 const translateConfirmDialog = document.getElementById('translateConfirmDialog');
-const translateConfirmSummary = document.getElementById('translateConfirmSummary');
+const translateConfirmFile = document.getElementById('translateConfirmFile');
+const translateConfirmFrom = document.getElementById('translateConfirmFrom');
+const translateConfirmTo = document.getElementById('translateConfirmTo');
 const translateConfirmCancel = document.getElementById('translateConfirmCancel');
 const translateConfirmOk = document.getElementById('translateConfirmOk');
 
@@ -1025,13 +1027,10 @@ translateBtn.addEventListener('click', () => {
         }
     }
     errorMessage.style.display = 'none';
-    let summary;
-    if (isSearchMode()) {
-        summary = `Subtitle file: ${fetchedLabel}\nFrom: ${selectedOptionLabel(sourceLanguage)}\nTo: ${selectedOptionLabel(targetLanguage)}`;
-    } else {
-        summary = `Subtitle file: ${fileInput.files[0].name}\nFrom: ${selectedOptionLabel(sourceLanguage)}\nTo: ${selectedOptionLabel(targetLanguage)}`;
-    }
-    translateConfirmSummary.textContent = summary;
+    const fileLabel = isSearchMode() ? fetchedLabel : fileInput.files[0].name;
+    translateConfirmFile.textContent = fileLabel;
+    translateConfirmFrom.textContent = selectedOptionLabel(sourceLanguage);
+    translateConfirmTo.textContent = selectedOptionLabel(targetLanguage);
     translateConfirmDialog.showModal();
 });
 
