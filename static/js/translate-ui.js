@@ -1,0 +1,278 @@
+import { UI } from './app-ui.js';
+import { buildTranslationTimingText } from './timing-utils.js';
+import { isSearchMode, updatePrimaryButtonLabel } from './language-and-source-ui.js';
+import { releaseFetchedAfterTranslate } from './opensubtitles-results-table.js';
+
+function selectedOptionLabel(selectEl) {
+    const opt = selectEl.options[selectEl.selectedIndex];
+    return opt ? opt.textContent.trim() : '';
+}
+
+export async function runDownloadOriginal() {
+    const { state } = UI;
+    const errorMessage = UI.el.errorMessage;
+    const downloadSection = UI.el.downloadSection;
+    const progressBar = UI.el.progressBar;
+    const progressPercent = UI.el.progressPercent;
+
+    errorMessage.style.display = 'none';
+    downloadSection.style.display = 'none';
+    progressBar.style.display = 'none';
+    progressPercent.style.display = 'none';
+
+    UI.el.translateBtn.disabled = true;
+    UI.el.loadingSpinner.style.display = 'inline-block';
+    UI.el.btnText.textContent = 'Downloading...';
+
+    try {
+        const url = `${UI.api}/api/opensubtitles/fetched/${encodeURIComponent(state.fetchedId)}/download`;
+        const resp = await fetch(url);
+        if (!resp.ok) {
+            const errText = await resp.text();
+            let msg = errText;
+            try {
+                const j = JSON.parse(errText);
+                if (j.error) msg = j.error;
+            } catch {
+                /* plain */
+            }
+            throw new Error(msg || resp.statusText || 'Download failed');
+        }
+        const blob = await resp.blob();
+        const objUrl = URL.createObjectURL(blob);
+        UI.el.downloadBtn.href = objUrl;
+        UI.el.downloadBtn.download = state.fetchedLabel || 'subtitle.srt';
+        UI.el.downloadSuccessMessage.textContent = 'Subtitle file ready.';
+        UI.el.downloadBtn.textContent = '📥 Download original subtitle';
+        UI.el.translationDuration.textContent = '';
+        downloadSection.style.display = 'block';
+        downloadSection.scrollIntoView({ behavior: 'smooth' });
+    } catch (error) {
+        console.error('Download error:', error);
+        let msg = error.message || String(error);
+        try {
+            const parsed = JSON.parse(msg);
+            if (parsed && parsed.error) msg = parsed.error;
+        } catch {
+            /* plain */
+        }
+        const networkFailure =
+            error instanceof TypeError ||
+            msg === 'Failed to fetch' ||
+            /networkerror when attempting to fetch resource/i.test(msg);
+        if (networkFailure) {
+            errorMessage.textContent =
+                'Could not reach the server. Open this app via your Flask URL (e.g. http://127.0.0.1:5000/), not as a file:// page.';
+        } else {
+            errorMessage.textContent = `Error: ${msg}`;
+        }
+        errorMessage.style.display = 'block';
+    } finally {
+        UI.el.translateBtn.disabled = false;
+        UI.el.loadingSpinner.style.display = 'none';
+        updatePrimaryButtonLabel();
+    }
+}
+
+export async function runTranslation() {
+    const { state } = UI;
+    const errorMessage = UI.el.errorMessage;
+    const downloadSection = UI.el.downloadSection;
+    const progressBar = UI.el.progressBar;
+    const progressFill = UI.el.progressFill;
+    const progressPercent = UI.el.progressPercent;
+    const translationProgressTiming = UI.el.translationProgressTiming;
+
+    errorMessage.style.display = 'none';
+    downloadSection.style.display = 'none';
+    progressBar.style.display = 'block';
+    progressFill.style.width = '0%';
+    progressPercent.style.display = 'block';
+    progressPercent.textContent = '0%';
+
+    const translationStartMs = Date.now();
+    let translationLastProgress = 0;
+    let translationDoneAtMs = null;
+    let translationTimingIntervalId = null;
+    function renderTranslationTiming() {
+        if (!translationProgressTiming) return;
+        const elapsedSec =
+            translationLastProgress >= 100 && translationDoneAtMs != null
+                ? (translationDoneAtMs - translationStartMs) / 1000
+                : (Date.now() - translationStartMs) / 1000;
+        translationProgressTiming.textContent = buildTranslationTimingText(
+            elapsedSec,
+            translationLastProgress,
+        );
+    }
+    if (translationProgressTiming) {
+        translationProgressTiming.hidden = false;
+        renderTranslationTiming();
+        translationTimingIntervalId = setInterval(renderTranslationTiming, 250);
+    }
+
+    UI.el.translateBtn.disabled = true;
+    UI.el.loadingSpinner.style.display = 'inline-block';
+    UI.el.btnText.textContent = 'Translating...';
+
+    try {
+        const taskResponse = await fetch(`${UI.api}/api/task`);
+
+        if (!taskResponse.ok) {
+            const errorText = await taskResponse.text();
+            throw new Error(errorText || 'Server error');
+        }
+
+        const taskJson = await taskResponse.json();
+        const taskId = taskJson.taskId;
+
+        const formData = new FormData();
+        formData.append('sourceLanguage', UI.el.sourceLanguage.value);
+        formData.append('targetLanguage', UI.el.targetLanguage.value);
+        formData.append('dualLanguage', UI.el.dualLanguage.checked ? 'true' : 'false');
+        formData.append('taskId', taskId);
+        if (state.fetchedId && isSearchMode()) {
+            formData.append('fetchedId', state.fetchedId);
+        } else {
+            formData.append('srtFile', UI.el.fileInput.files[0]);
+        }
+
+        const evtSource = new EventSource(`${UI.api}/api/translate/progress/${taskId}`);
+        const ssePromise = new Promise((resolve, reject) => {
+            let completed = false;
+            progressBar.style.display = 'block';
+            progressFill.style.width = '0%';
+            evtSource.onmessage = function (event) {
+                let progress = parseInt(event.data, 10);
+                if (isNaN(progress)) progress = 0;
+                translationLastProgress = progress;
+                if (progress >= 100 && translationDoneAtMs == null) {
+                    translationDoneAtMs = Date.now();
+                }
+                renderTranslationTiming();
+                progressFill.style.width = progress + '%';
+                progressFill.setAttribute('aria-valuenow', progress);
+                progressPercent.textContent = progress + '%';
+                if (progress >= 100 && !completed) {
+                    completed = true;
+                    evtSource.close();
+                    resolve();
+                }
+            };
+            evtSource.onerror = function () {
+                evtSource.close();
+                reject(new Error('Lost connection to progress server.'));
+            };
+        });
+
+        const translatePromise = (async () => {
+            const response = await fetch(`${UI.api}/api/translate`, {
+                method: 'POST',
+                body: formData,
+            });
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(errorText || 'Server error');
+            }
+            const json = await response.json();
+            if (!json.success || !json.downloadUrl) {
+                throw new Error(json.error || 'Translation failed');
+            }
+            return json;
+        })();
+
+        try {
+            await ssePromise;
+        } catch (sseErr) {
+            console.warn(sseErr?.message || sseErr);
+        }
+
+        const json = await translatePromise;
+        const downloadUrl = json.downloadUrl;
+        const translationDuration = json.translationDuration;
+        const serverFilename = json.filename;
+
+        const srtResponse = await fetch(`${UI.api}${downloadUrl}`);
+        if (!srtResponse.ok) {
+            throw new Error('Failed to download translated subtitle file');
+        }
+        const translatedContent = await srtResponse.text();
+
+        const blob = new Blob([translatedContent], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        UI.el.downloadBtn.href = url;
+        const targetLang = formData.get('targetLanguage');
+        let newFileName = serverFilename;
+        if (!newFileName) {
+            const originalFileName = isSearchMode()
+                ? state.fetchedLabel || 'subtitle.srt'
+                : UI.el.fileInput.files[0].name;
+            const dualSuffix = UI.el.dualLanguage?.checked ? '_dual' : '';
+            newFileName = originalFileName.replace(
+                /\.(srt|ass|ssa|sub)$/i,
+                `_GoogleTrans_${targetLang}${dualSuffix}.$1`,
+            );
+            if (newFileName === originalFileName) {
+                newFileName = originalFileName + `_GoogleTrans_${targetLang}${dualSuffix}`;
+            }
+        }
+        UI.el.downloadBtn.download = newFileName;
+        UI.el.downloadSuccessMessage.textContent = 'Translation completed successfully! 🎉';
+        UI.el.downloadBtn.textContent = '📥 Download translated subtitle';
+
+        if (translationDuration) {
+            UI.el.translationDuration.textContent = `Time for translation to complete: ${translationDuration}`;
+        } else {
+            UI.el.translationDuration.textContent = '';
+        }
+
+        if (isSearchMode()) {
+            releaseFetchedAfterTranslate();
+        }
+
+        downloadSection.style.display = 'block';
+        downloadSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (error) {
+        console.error('Translation error:', error);
+        let msg = error.message || String(error);
+        try {
+            const parsed = JSON.parse(msg);
+            if (parsed && parsed.error) msg = parsed.error;
+        } catch {
+            /* plain text */
+        }
+        const networkFailure =
+            error instanceof TypeError ||
+            msg === 'Failed to fetch' ||
+            /networkerror when attempting to fetch resource/i.test(msg) ||
+            msg.includes('Lost connection to progress server');
+        if (networkFailure) {
+            errorMessage.textContent =
+                'Could not reach the translation server. Open this app at http://127.0.0.1:5000/ after running python app.py (do not open index.html as a file:// page). If you use another dev port or HTTPS, set the subtitle-translator-api-base meta tag in index.html to your Flask URL (e.g. http://127.0.0.1:5000). Note: an HTTPS page cannot call an HTTP API (mixed content).';
+        } else {
+            errorMessage.textContent = `Error: ${msg}. Please check your file format (SRT, ASS, SSA, SUB) and try again.`;
+        }
+        errorMessage.style.display = 'block';
+        progressFill.style.width = '0%';
+    } finally {
+        if (translationTimingIntervalId != null) {
+            clearInterval(translationTimingIntervalId);
+            translationTimingIntervalId = null;
+        }
+        if (translationProgressTiming) {
+            translationProgressTiming.hidden = true;
+            translationProgressTiming.textContent = '';
+        }
+        UI.el.translateBtn.disabled = false;
+        UI.el.loadingSpinner.style.display = 'none';
+        updatePrimaryButtonLabel();
+        setTimeout(() => {
+            progressBar.style.display = 'none';
+            progressFill.style.width = '0%';
+            progressPercent.style.display = 'none';
+            progressPercent.textContent = '0%';
+        }, 1000);
+    }
+}
+
+export { selectedOptionLabel };

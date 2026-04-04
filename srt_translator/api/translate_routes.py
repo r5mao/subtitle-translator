@@ -1,7 +1,6 @@
 """Translate and download routes (SRT/ASS/SUB)."""
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import re
@@ -12,275 +11,21 @@ import uuid
 from datetime import datetime
 
 from flask import Blueprint, jsonify, request, send_file, Response, stream_with_context
-from googletrans import Translator
 
-from srt_translator.services.ass_markup import (
-    ass_escape_plain_text,
-    escape_ass_plain_runs,
-    html_styling_tags_to_ass,
-    plain_text_for_translation_ass,
-)
 from srt_translator.services.fetched_subtitle_file import (
     is_valid_fetched_id,
     resolve_fetched_subtitle_file,
 )
-from srt_translator.services.pinyin_helper import line_to_pinyin
-from srt_translator.services.srt_entry import SRTEntry
 from srt_translator.services.subtitle_parser import SubtitleParser
 from srt_translator.services.translation import (
     google_translate_dest,
     is_pinyin_target,
     translation_service,
 )
+from srt_translator.subtitle_translate.ass_lines import format_translation_duration
+from srt_translator.subtitle_translate.jobs import FORMAT_RUNNERS
 
 logger = logging.getLogger(__name__)
-
-
-def _ass_english_line(text: str) -> str:
-    return f"{{\\fs10}}{escape_ass_plain_runs(text)}{{\\r}}"
-
-
-def _ass_chinese_line(text: str) -> str:
-    return f"{{\\fs12}}{escape_ass_plain_runs(text)}{{\\r}}"
-
-
-def _ass_pinyin_line(pinyin_plain: str) -> str:
-    return f"{{\\fs8}}{ass_escape_plain_text(pinyin_plain)}{{\\r}}"
-
-
-def _join_srt_text_lines(lines: list) -> str:
-    return " ".join(x.strip() for x in (lines or []) if x.strip())
-
-
-def _collapse_ass_dialogue(text: str) -> str:
-    if not text:
-        return ""
-    return " ".join(p.strip() for p in text.split(r"\N") if p.strip())
-
-
-def _collapse_sub_text(text: str) -> str:
-    if not text:
-        return ""
-    return " ".join(p.strip() for p in re.split(r"[\r\n]+", text) if p.strip())
-
-
-def _format_translation_duration(total_ms: int) -> str:
-    duration_minutes = total_ms // 60000
-    duration_seconds = (total_ms % 60000) // 1000
-    duration_ms = total_ms % 1000
-    if duration_minutes:
-        return f"{duration_minutes} mins {duration_seconds} seconds {duration_ms} ms"
-    if duration_seconds:
-        return f"{duration_seconds} seconds {duration_ms} ms"
-    return f"{duration_ms} ms"
-
-
-async def _translate_line_batches(
-    lines: list[str],
-    source_lang: str,
-    translate_dest: str,
-    update_progress,
-) -> list[str]:
-    out: list[str] = []
-    async with Translator() as translator:
-        batch_size = 100
-        total = len(lines)
-        for i in range(0, total, batch_size):
-            batch = lines[i : i + batch_size]
-            translated_batch = await translation_service.translate_texts(
-                batch, source_lang, translate_dest, translator
-            )
-            out.extend(translated_batch)
-            update_progress(min(i + batch_size, total), total)
-    return out
-
-
-def _run_srt_translate(
-    parsed: list,
-    source_lang: str,
-    translate_dest: str,
-    use_pinyin: bool,
-    dual_language: bool,
-    base_name: str,
-    target_lang: str,
-    update_progress,
-) -> tuple[str, str]:
-    async def srt_progress_async(entries, src, dest):
-        translated_entries = []
-        async with Translator() as translator:
-            all_lines = []
-            entry_line_counts = []
-            for entry in entries:
-                entry_line_counts.append(len(entry.text_lines))
-                all_lines.extend(entry.text_lines)
-            batch_size = 100
-            translated_lines = []
-            for i in range(0, len(all_lines), batch_size):
-                batch = all_lines[i : i + batch_size]
-                translated_batch = await translation_service.translate_texts(
-                    batch, src, dest, translator
-                )
-                translated_lines.extend(translated_batch)
-                update_progress(min(i + batch_size, len(all_lines)), len(all_lines))
-            idx = 0
-            for entry, line_count in zip(entries, entry_line_counts):
-                lines = translated_lines[idx : idx + line_count]
-                translated_entries.append(
-                    SRTEntry(entry.sequence_number, entry.start_time, entry.end_time, lines)
-                )
-                idx += line_count
-                update_progress(idx, len(all_lines))
-        return translated_entries
-
-    entries = [
-        SRTEntry(e["sequence_number"], e["start_time"], e["end_time"], e["text_lines"]) for e in parsed
-    ]
-    translated_entries = asyncio.run(srt_progress_async(entries, source_lang, translate_dest))
-
-    if use_pinyin and dual_language:
-        output_entries = []
-        for orig_dict, trans_entry in zip(parsed, translated_entries):
-            en = _join_srt_text_lines(orig_dict["text_lines"])
-            zh = _join_srt_text_lines(trans_entry.text_lines)
-            pin = " ".join(line_to_pinyin(cl) for cl in trans_entry.text_lines if cl.strip())
-            combined_lines = [_ass_english_line(en), _ass_chinese_line(zh), _ass_pinyin_line(pin)]
-            output_entries.append(
-                {
-                    "sequence_number": trans_entry.sequence_number,
-                    "start_time": trans_entry.start_time,
-                    "end_time": trans_entry.end_time,
-                    "text_lines": combined_lines,
-                }
-            )
-        content = SubtitleParser.srt_output_entries_to_minimal_ass(output_entries)
-    elif use_pinyin and not dual_language:
-        output_entries = []
-        for trans_entry in translated_entries:
-            zh = _join_srt_text_lines(trans_entry.text_lines)
-            pin = " ".join(line_to_pinyin(cl) for cl in trans_entry.text_lines if cl.strip())
-            output_entries.append(
-                {
-                    "sequence_number": trans_entry.sequence_number,
-                    "start_time": trans_entry.start_time,
-                    "end_time": trans_entry.end_time,
-                    "text_lines": [_ass_chinese_line(zh), _ass_pinyin_line(pin)],
-                }
-            )
-        content = SubtitleParser.srt_output_entries_to_minimal_ass(output_entries)
-    elif dual_language:
-        output_entries = []
-        for orig_dict, trans_entry in zip(parsed, translated_entries):
-            combined_lines = [
-                _join_srt_text_lines(orig_dict["text_lines"]),
-                _join_srt_text_lines(trans_entry.text_lines),
-            ]
-            output_entries.append(
-                {
-                    "sequence_number": trans_entry.sequence_number,
-                    "start_time": trans_entry.start_time,
-                    "end_time": trans_entry.end_time,
-                    "text_lines": combined_lines,
-                }
-            )
-        content = SubtitleParser.to_srt(output_entries)
-    else:
-        content = SubtitleParser.to_srt(
-            [
-                {
-                    "sequence_number": e.sequence_number,
-                    "start_time": e.start_time,
-                    "end_time": e.end_time,
-                    "text_lines": [_join_srt_text_lines(e.text_lines)] if e.text_lines else [""],
-                }
-                for e in translated_entries
-            ]
-        )
-
-    ext = "ass" if use_pinyin else "srt"
-    fname = f"{base_name}_{target_lang}{'_dual' if dual_language else ''}.{ext}"
-    return content, fname
-
-
-def _run_ass_translate(
-    parsed: dict,
-    source_lang: str,
-    google_dest: str,
-    use_pinyin: bool,
-    dual_language: bool,
-    base_name: str,
-    target_lang: str,
-    update_progress,
-) -> tuple[str, str]:
-    texts_raw = [d["text"] for d in parsed["dialogues"]]
-    texts_plain = [plain_text_for_translation_ass(t) for t in texts_raw]
-    translated_texts = asyncio.run(
-        _translate_line_batches(texts_plain, source_lang, google_dest, update_progress)
-    )
-
-    if use_pinyin and dual_language:
-        combined_texts = [
-            f"{_ass_english_line(_collapse_ass_dialogue(html_styling_tags_to_ass(orig)))}\\N"
-            f"{_ass_chinese_line(_collapse_ass_dialogue(tran))}\\N"
-            f"{_ass_pinyin_line(line_to_pinyin(_collapse_ass_dialogue(tran)))}"
-            for orig, tran in zip(texts_raw, translated_texts)
-        ]
-    elif use_pinyin and not dual_language:
-        combined_texts = [
-            f"{_ass_chinese_line(_collapse_ass_dialogue(tran))}\\N"
-            f"{_ass_pinyin_line(line_to_pinyin(_collapse_ass_dialogue(tran)))}"
-            for tran in translated_texts
-        ]
-    elif dual_language:
-        combined_texts = [
-            f"{_ass_english_line(_collapse_ass_dialogue(html_styling_tags_to_ass(orig)))}\\N"
-            f"{_ass_chinese_line(_collapse_ass_dialogue(tran))}"
-            for orig, tran in zip(texts_raw, translated_texts)
-        ]
-    else:
-        combined_texts = [_ass_chinese_line(_collapse_ass_dialogue(t)) for t in translated_texts]
-
-    content = SubtitleParser.to_ass(parsed, combined_texts)
-    fname = f"{base_name}_{target_lang}{'_dual' if dual_language else ''}.ass"
-    return content, fname
-
-
-def _run_sub_translate(
-    parsed: dict,
-    source_lang: str,
-    google_dest: str,
-    use_pinyin: bool,
-    dual_language: bool,
-    base_name: str,
-    target_lang: str,
-    update_progress,
-) -> tuple[str, str]:
-    texts = [d["text"] for d in parsed["subs"]]
-    translated_texts = asyncio.run(
-        _translate_line_batches(texts, source_lang, google_dest, update_progress)
-    )
-
-    if use_pinyin and dual_language:
-        combined_texts = [
-            f"{_collapse_sub_text(orig)}|{_collapse_sub_text(tran)}|"
-            f"{line_to_pinyin(_collapse_sub_text(tran))}"
-            for orig, tran in zip(texts, translated_texts)
-        ]
-    elif use_pinyin and not dual_language:
-        combined_texts = [
-            f"{_collapse_sub_text(tran)}|{line_to_pinyin(_collapse_sub_text(tran))}"
-            for tran in translated_texts
-        ]
-    elif dual_language:
-        combined_texts = [
-            f"{_collapse_sub_text(orig)}|{_collapse_sub_text(tran)}"
-            for orig, tran in zip(texts, translated_texts)
-        ]
-    else:
-        combined_texts = [_collapse_sub_text(t) for t in translated_texts]
-
-    content = SubtitleParser.to_sub(parsed, combined_texts)
-    fname = f"{base_name}_{target_lang}{'_dual' if dual_language else ''}.sub"
-    return content, fname
 
 
 def register_translate_routes(api_bp: Blueprint, translation_progress: dict) -> None:
@@ -379,47 +124,25 @@ def register_translate_routes(api_bp: Blueprint, translation_progress: dict) -> 
 
         try:
             translation_timer_start = datetime.now()
-            if fmt == "srt":
-                translated_content, translated_filename = _run_srt_translate(
-                    parsed,
-                    source_lang,
-                    google_dest,
-                    use_pinyin,
-                    dual_language,
-                    base_name,
-                    target_lang,
-                    update_progress,
-                )
-            elif fmt == "ass":
-                translated_content, translated_filename = _run_ass_translate(
-                    parsed,
-                    source_lang,
-                    google_dest,
-                    use_pinyin,
-                    dual_language,
-                    base_name,
-                    target_lang,
-                    update_progress,
-                )
-            elif fmt == "sub":
-                translated_content, translated_filename = _run_sub_translate(
-                    parsed,
-                    source_lang,
-                    google_dest,
-                    use_pinyin,
-                    dual_language,
-                    base_name,
-                    target_lang,
-                    update_progress,
-                )
-            else:
+            runner = FORMAT_RUNNERS.get(fmt)
+            if not runner:
                 raise ValueError("Unsupported subtitle format")
+            translated_content, translated_filename = runner(
+                parsed,
+                source_lang,
+                google_dest,
+                use_pinyin,
+                dual_language,
+                base_name,
+                target_lang,
+                update_progress,
+            )
 
             translation_progress[task_id]["progress"] = 100
             logger.info("Translation completed for %s format", fmt)
 
             total_ms = int((datetime.now() - translation_timer_start).total_seconds() * 1000)
-            duration_str = _format_translation_duration(total_ms)
+            duration_str = format_translation_duration(total_ms)
             logger.info("Translation took %s", duration_str)
 
             file_id = str(uuid.uuid4())

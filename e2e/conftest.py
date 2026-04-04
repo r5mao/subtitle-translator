@@ -20,7 +20,7 @@ import pytest
 from werkzeug.serving import make_server
 
 from srt_translator import create_app
-from srt_translator.api import opensubtitles_routes as os_routes
+from srt_translator.api import opensubtitles_search_handlers as os_search_handlers
 from srt_translator.services import opensubtitles_client as osc
 from srt_translator.services.translation import translation_service
 
@@ -108,7 +108,7 @@ def live_server_url():
     """Threaded Flask on an ephemeral port; patches active for the whole session."""
     osc._subtitle_language_names_cache = None
 
-    p_os = mock.patch.object(os_routes, "OpenSubtitlesClient", _FakeOpenSubtitlesClient)
+    p_os = mock.patch.object(os_search_handlers, "OpenSubtitlesClient", _FakeOpenSubtitlesClient)
     p_tr = mock.patch.object(
         translation_service,
         "translate_texts",

@@ -1,926 +1,185 @@
 import { getApiBase } from './api-base.js';
+import { UI } from './app-ui.js';
 import { setupFileUpload } from './file-upload.js';
-import { attrEscapeUrl, esc } from './string-utils.js';
-import { buildTranslationTimingText } from './timing-utils.js';
+import {
+    isSearchMode,
+    syncTranslateToggleVisibility,
+    updatePrimaryButtonLabel,
+    validateLanguages,
+    wantsTranslate,
+} from './language-and-source-ui.js';
+import {
+    handleOsQueryKeydown,
+    hideOpenSubtitlesSuggestions,
+    scheduleFetchOpenSubtitlesSuggestions,
+    setRunOpenSubtitlesSearch,
+} from './opensubtitles-suggestions.js';
+import {
+    clearOpenSubtitlesSelection,
+    effectiveTotalPages,
+    loadOpensubtitlesStatus,
+    runOpenSubtitlesSearch,
+} from './opensubtitles-results.js';
+import { scheduleSubtitlePreviewRefresh } from './subtitle-preview.js';
+import {
+    runDownloadOriginal,
+    runTranslation,
+    selectedOptionLabel,
+} from './translate-ui.js';
 
-const API = getApiBase();
+UI.api = getApiBase();
 
-const fileInput = document.getElementById('srtFile');
-const fileDisplay = document.getElementById('fileDisplay');
-const { resetFileInput } = setupFileUpload(fileInput, fileDisplay, validateLanguages);
+Object.assign(UI.el, {
+    fileInput: document.getElementById('srtFile'),
+    fileDisplay: document.getElementById('fileDisplay'),
+    sourceSearch: document.getElementById('sourceSearch'),
+    sourceUpload: document.getElementById('sourceUpload'),
+    searchPanel: document.getElementById('searchPanel'),
+    uploadPanel: document.getElementById('uploadPanel'),
+    opensubtitlesHint: document.getElementById('opensubtitlesHint'),
+    osQuery: document.getElementById('osQuery'),
+    osSuggestionsPanel: document.getElementById('osSuggestionsPanel'),
+    osSuggestionsList: document.getElementById('osSuggestionsList'),
+    osSuggestLive: document.getElementById('osSuggestLive'),
+    osAnyLanguage: document.getElementById('osAnyLanguage'),
+    osSearchBtn: document.getElementById('osSearchBtn'),
+    osSearchStatus: document.getElementById('osSearchStatus'),
+    osLangChips: document.getElementById('osLangChips'),
+    osResultsTable: document.getElementById('osResultsTable'),
+    osResultsBody: document.getElementById('osResultsBody'),
+    sourceLanguage: document.getElementById('sourceLanguage'),
+    osPager: document.getElementById('osPager'),
+    osPerPageSelect: document.getElementById('osPerPageSelect'),
+    osPagePrev: document.getElementById('osPagePrev'),
+    osPageNext: document.getElementById('osPageNext'),
+    osPageInfo: document.getElementById('osPageInfo'),
+    languageSection: document.getElementById('languageSection'),
+    translateToOtherLang: document.getElementById('translateToOtherLang'),
+    translateOnlyFields: document.getElementById('translateOnlyFields'),
+    translateToggleWrap: document.getElementById('translateToggleWrap'),
+    subtitlePreviewPanel: document.getElementById('subtitlePreviewPanel'),
+    subtitlePreviewBg: document.getElementById('subtitlePreviewBg'),
+    subtitlePreviewOrig: document.getElementById('subtitlePreviewOrig'),
+    subtitlePreviewTrans: document.getElementById('subtitlePreviewTrans'),
+    subtitlePreviewPinyin: document.getElementById('subtitlePreviewPinyin'),
+    downloadSuccessMessage: document.getElementById('downloadSuccessMessage'),
+    targetLanguage: document.getElementById('targetLanguage'),
+    dualLanguage: document.getElementById('dualLanguage'),
+    translationForm: document.getElementById('translationForm'),
+    translateBtn: document.getElementById('translateBtn'),
+    loadingSpinner: document.getElementById('loadingSpinner'),
+    btnText: document.getElementById('btnText'),
+    translateConfirmDialog: document.getElementById('translateConfirmDialog'),
+    translateConfirmFile: document.getElementById('translateConfirmFile'),
+    translateConfirmFrom: document.getElementById('translateConfirmFrom'),
+    translateConfirmTo: document.getElementById('translateConfirmTo'),
+    translateConfirmCancel: document.getElementById('translateConfirmCancel'),
+    translateConfirmOk: document.getElementById('translateConfirmOk'),
+    errorMessage: document.getElementById('errorMessage'),
+    downloadSection: document.getElementById('downloadSection'),
+    progressBar: document.getElementById('progressBar'),
+    progressFill: document.getElementById('progressFill'),
+    progressPercent: document.getElementById('progressPercent'),
+    translationProgressTiming: document.getElementById('translationProgressTiming'),
+    downloadBtn: document.getElementById('downloadBtn'),
+    translationDuration: document.getElementById('translationDuration'),
+});
 
-// --- OpenSubtitles search ---
-const sourceSearch = document.getElementById('sourceSearch');
-const sourceUpload = document.getElementById('sourceUpload');
-const searchPanel = document.getElementById('searchPanel');
-const uploadPanel = document.getElementById('uploadPanel');
-const opensubtitlesHint = document.getElementById('opensubtitlesHint');
-const osQuery = document.getElementById('osQuery');
-const osSuggestionsPanel = document.getElementById('osSuggestionsPanel');
-const osSuggestionsList = document.getElementById('osSuggestionsList');
-const osSuggestLive = document.getElementById('osSuggestLive');
-const osAnyLanguage = document.getElementById('osAnyLanguage');
-const osSearchBtn = document.getElementById('osSearchBtn');
-const osSearchStatus = document.getElementById('osSearchStatus');
-const osLangChips = document.getElementById('osLangChips');
-const osResultsTable = document.getElementById('osResultsTable');
-const osResultsBody = document.getElementById('osResultsBody');
-const sourceLanguage = document.getElementById('sourceLanguage');
-const osPager = document.getElementById('osPager');
-const osPerPageSelect = document.getElementById('osPerPageSelect');
-const osPagePrev = document.getElementById('osPagePrev');
-const osPageNext = document.getElementById('osPageNext');
-const osPageInfo = document.getElementById('osPageInfo');
-/** Max OpenSubtitles pages the UI/API allow (must match server _MAX_SEARCH_PAGES). */
-const OS_MAX_PAGER_PAGES = 10;
-const languageSection = document.getElementById('languageSection');
-const translateToOtherLang = document.getElementById('translateToOtherLang');
-const translateOnlyFields = document.getElementById('translateOnlyFields');
-const translateToggleWrap = document.getElementById('translateToggleWrap');
-const subtitlePreviewPanel = document.getElementById('subtitlePreviewPanel');
-const subtitlePreviewBg = document.getElementById('subtitlePreviewBg');
-const subtitlePreviewOrig = document.getElementById('subtitlePreviewOrig');
-const subtitlePreviewTrans = document.getElementById('subtitlePreviewTrans');
-const subtitlePreviewPinyin = document.getElementById('subtitlePreviewPinyin');
-let lastPreviewRow = null;
-let previewRequestSeq = 0;
-let previewAbort = null;
-let previewDebounceTimer = null;
-const downloadSuccessMessage = document.getElementById('downloadSuccessMessage');
-const targetLanguage = document.getElementById('targetLanguage');
-const dualLanguage = document.getElementById('dualLanguage');
-const translationForm = document.getElementById('translationForm');
-const translateBtn = document.getElementById('translateBtn');
-const translateConfirmDialog = document.getElementById('translateConfirmDialog');
-const translateConfirmFile = document.getElementById('translateConfirmFile');
-const translateConfirmFrom = document.getElementById('translateConfirmFrom');
-const translateConfirmTo = document.getElementById('translateConfirmTo');
-const translateConfirmCancel = document.getElementById('translateConfirmCancel');
-const translateConfirmOk = document.getElementById('translateConfirmOk');
-
-let opensubtitlesConfigured = false;
-let rawSearchResults = [];
-let activeLangFilter = 'all';
-let fetchedId = null;
-let fetchedLabel = '';
-/** OpenSubtitles file id for the row that is selected (highlight + toggle off). */
-let selectedOsFileId = null;
-let fetchInProgressFileId = null;
-let osLastSearchQuery = '';
-let osLastSearchLang = '';
-/** When set (from a suggestion pick), passed to OpenSubtitles as year / imdb_id filters. */
-let osSearchRefine = { year: null, imdbId: null };
-let osSearchPage = 1;
-let osTotalPages = null;
-let osTotalCount = null;
-
-let suggestAbort = null;
-let suggestDebounceTimer = null;
-let suggestionRows = [];
-let activeSuggestionIndex = -1;
-
-function hideOpenSubtitlesSuggestions() {
-    if (suggestDebounceTimer) {
-        clearTimeout(suggestDebounceTimer);
-        suggestDebounceTimer = null;
-    }
-    if (suggestAbort) {
-        suggestAbort.abort();
-        suggestAbort = null;
-    }
-    suggestionRows = [];
-    activeSuggestionIndex = -1;
-    osSuggestionsList.innerHTML = '';
-    osSuggestionsPanel.hidden = true;
-    osQuery.setAttribute('aria-expanded', 'false');
-    osQuery.removeAttribute('aria-activedescendant');
-}
-
-function isSearchMode() {
-    return sourceSearch.checked;
-}
-
-function clearOpenSubtitlesSelection() {
-    fetchedId = null;
-    fetchedLabel = '';
-    selectedOsFileId = null;
-    fetchInProgressFileId = null;
-    lastPreviewRow = null;
-    hideSubtitlePreview();
-    validateLanguages();
-}
-
-/** After translate, server removes temp file; clear handles without hiding preview or search results. */
-function releaseFetchedAfterTranslate() {
-    fetchedId = null;
-    fetchedLabel = '';
-    selectedOsFileId = null;
-    fetchInProgressFileId = null;
-    validateLanguages();
-    filterAndRenderResults();
-}
-
-function hideSubtitlePreview() {
-    subtitlePreviewPanel.hidden = true;
-    subtitlePreviewBg.removeAttribute('src');
-    subtitlePreviewBg.hidden = true;
-    subtitlePreviewOrig.textContent = '';
-    subtitlePreviewTrans.textContent = '';
-    subtitlePreviewTrans.hidden = true;
-    subtitlePreviewPinyin.textContent = '';
-    subtitlePreviewPinyin.hidden = true;
-}
-
-function applyPreviewPayload(data) {
-    const orig = Array.isArray(data.originalLines)
-        ? data.originalLines
-        : Array.isArray(data.sampleLines)
-          ? data.sampleLines
-          : [];
-    subtitlePreviewOrig.textContent = orig.length ? orig.join(' ') : '—';
-    const trans = data.translatedLines;
-    if (Array.isArray(trans) && trans.length) {
-        subtitlePreviewTrans.textContent = trans.join(' ');
-        subtitlePreviewTrans.hidden = false;
-    } else {
-        subtitlePreviewTrans.textContent = '';
-        subtitlePreviewTrans.hidden = true;
-    }
-    const pin = data.pinyinLines;
-    if (Array.isArray(pin) && pin.length) {
-        subtitlePreviewPinyin.textContent = pin.join(' ');
-        subtitlePreviewPinyin.hidden = false;
-    } else {
-        subtitlePreviewPinyin.textContent = '';
-        subtitlePreviewPinyin.hidden = true;
-    }
-}
-
-function scheduleSubtitlePreviewRefresh() {
-    if (!fetchedId || !lastPreviewRow) return;
-    clearTimeout(previewDebounceTimer);
-    previewDebounceTimer = setTimeout(() => {
-        void refreshSubtitlePreview(lastPreviewRow);
-    }, 320);
-}
-
-function wantsTranslate() {
-    if (!isSearchMode()) return true;
-    return translateToOtherLang.checked;
-}
-
-function updatePrimaryButtonLabel() {
-    const btnText = document.getElementById('btnText');
-    if (!isSearchMode() || wantsTranslate()) {
-        btnText.textContent = 'Translate subtitles';
-    } else {
-        btnText.textContent = 'Download subtitle';
-    }
-}
-
-function syncTranslateToggleVisibility() {
-    if (!isSearchMode()) {
-        translateToggleWrap.hidden = true;
-        translateToOtherLang.checked = true;
-        translateOnlyFields.hidden = false;
-    } else {
-        translateToggleWrap.hidden = false;
-        translateOnlyFields.hidden = !translateToOtherLang.checked;
-    }
-    updatePrimaryButtonLabel();
-    validateLanguages();
-}
+const { resetFileInput } = setupFileUpload(
+    UI.el.fileInput,
+    UI.el.fileDisplay,
+    validateLanguages,
+);
+UI.callbacks.resetFileInput = resetFileInput;
 
 function syncSubtitleSourcePanels() {
     const search = isSearchMode();
-    searchPanel.hidden = !search;
-    uploadPanel.hidden = search;
+    UI.el.searchPanel.hidden = !search;
+    UI.el.uploadPanel.hidden = search;
     if (search) {
-        searchPanel.insertBefore(languageSection, osSearchStatus);
+        UI.el.searchPanel.insertBefore(UI.el.languageSection, UI.el.osSearchStatus);
         resetFileInput();
     } else {
-        uploadPanel.appendChild(languageSection);
+        UI.el.uploadPanel.appendChild(UI.el.languageSection);
         clearOpenSubtitlesSelection();
         hideOpenSubtitlesSuggestions();
-        osSearchRefine = { year: null, imdbId: null };
+        UI.state.osSearchRefine = { year: null, imdbId: null };
     }
     syncTranslateToggleVisibility();
 }
 
-translateToOtherLang.addEventListener('change', () => {
+UI.callbacks.syncSubtitleSourcePanels = syncSubtitleSourcePanels;
+
+setRunOpenSubtitlesSearch(runOpenSubtitlesSearch);
+
+UI.el.translateToOtherLang.addEventListener('change', () => {
     syncTranslateToggleVisibility();
     scheduleSubtitlePreviewRefresh();
 });
 
-sourceSearch.addEventListener('change', syncSubtitleSourcePanels);
-sourceUpload.addEventListener('change', syncSubtitleSourcePanels);
+UI.el.sourceSearch.addEventListener('change', syncSubtitleSourcePanels);
+UI.el.sourceUpload.addEventListener('change', syncSubtitleSourcePanels);
 
 syncSubtitleSourcePanels();
 
-function languageCounts(rows) {
-    const m = new Map();
-    for (const r of rows) {
-        const k = r.language || '?';
-        m.set(k, (m.get(k) || 0) + 1);
-    }
-    return m;
-}
-
-function displayLanguageLabel(code, rows) {
-    if (!code || code === '?') return code;
-    for (const r of rows) {
-        if ((r.language || '') === code && r.languageName) {
-            return r.languageName;
-        }
-    }
-    return code;
-}
-
-function renderLangChips(rows) {
-    const counts = languageCounts(rows);
-    const keys = Array.from(counts.keys()).sort();
-    if (keys.length <= 1) {
-        osLangChips.hidden = true;
-        osLangChips.innerHTML = '';
-        return;
-    }
-    osLangChips.hidden = false;
-    osLangChips.innerHTML = '';
-    const addChip = (code, label, count) => {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'lang-chip' + (activeLangFilter === code ? ' active' : '');
-        b.textContent = count != null ? `${label} (${count})` : label;
-        b.addEventListener('click', () => {
-            activeLangFilter = code;
-            renderLangChips(rawSearchResults);
-            filterAndRenderResults();
-        });
-        osLangChips.appendChild(b);
-    };
-    addChip('all', 'All languages', rows.length);
-    for (const k of keys) {
-        addChip(k, displayLanguageLabel(k, rows), counts.get(k));
-    }
-}
-
-/** Map OpenSubtitles subtitle language code to #sourceLanguage option value. */
-const OS_LANG_TO_UI_SOURCE = {
-    en: 'en',
-    es: 'es',
-    fr: 'fr',
-    de: 'de',
-    it: 'it',
-    pt: 'pt',
-    'pt-br': 'pt',
-    'pt-pt': 'pt',
-    ru: 'ru',
-    'zh-cn': 'zh-cn',
-    'zh-tw': 'zh-tw',
-    zh: 'zh-cn',
-    cmn: 'zh-cn',
-    ja: 'ja',
-    ko: 'ko',
-    ar: 'ar',
-    hi: 'hi',
-    nl: 'nl',
-    sv: 'sv',
-    da: 'da',
-    no: 'no',
-    fi: 'fi',
-    pl: 'pl',
-    tr: 'tr',
-    he: 'he',
-};
-
-function opensubtitlesLangToUiSource(code) {
-    if (!code || typeof code !== 'string') return null;
-    const c = code.trim().toLowerCase();
-    if (Object.prototype.hasOwnProperty.call(OS_LANG_TO_UI_SOURCE, c)) {
-        return OS_LANG_TO_UI_SOURCE[c];
-    }
-    if (c.startsWith('pt')) return 'pt';
-    return null;
-}
-
-function applySourceFromOpenSubtitlesRow(langCode) {
-    const v = opensubtitlesLangToUiSource(langCode);
-    if (!v) return;
-    let found = false;
-    for (let i = 0; i < sourceLanguage.options.length; i += 1) {
-        if (sourceLanguage.options[i].value === v) {
-            found = true;
-            break;
-        }
-    }
-    if (!found) return;
-    sourceLanguage.value = v;
-    validateLanguages();
-}
-
-function rowInfo(r) {
-    const parts = [];
-    const dl = r.downloads;
-    if (typeof dl === 'number' && Number.isFinite(dl) && dl >= 0) {
-        parts.push(`${dl} dl`);
-    }
-    const fps = r.fps;
-    if (typeof fps === 'number' && Number.isFinite(fps) && fps > 0) {
-        parts.push(`${fps} fps`);
-    }
-    if (r.hearingImpaired) parts.push('HI');
-    if (r.machineTranslated) parts.push('MT');
-    return parts.length ? parts.join(' · ') : '—';
-}
-
-function titleCell(r) {
-    let t = r.title || '';
-    if (r.year) t += ` (${r.year})`;
-    if (r.season != null && r.episode != null) {
-        t += ` S${r.season}E${r.episode}`;
-    }
-    let html = t ? esc(t) : '';
-    if (r.release) html += `<div class="cell-muted">${esc(r.release)}</div>`;
-    if (r.fileName) html += `<div class="cell-muted">${esc(r.fileName)}</div>`;
-    return html || '—';
-}
-
-function normalizeHttpUrl(raw) {
-    if (raw == null) return '';
-    let s = String(raw).trim();
-    if (!s) return '';
-    if (s.startsWith('//')) s = `https:${s}`;
-    if (/^https?:\/\//i.test(s)) return s;
-    /* Match server _maybe_absolutize_opensubtitles_image_url so relative poster paths still proxy. */
-    if (s.startsWith('/') && !s.includes('/../')) {
-        const low = s.toLowerCase().split('?', 1)[0];
-        if (
-            /\.(jpe?g|png|webp|gif|jfif)$/i.test(low) ||
-            low.includes('/pictures/') ||
-            low.includes('/posters/') ||
-            low.includes('/poster') ||
-            low.includes('/img/')
-        ) {
-            return `https://www.opensubtitles.com${s}`;
-        }
-    }
-    return '';
-}
-
-/** Same-origin proxy avoids CDN hotlink / referrer blocks on poster thumbnails. */
-function posterProxySrc(remoteUrl) {
-    const base = (API || '').replace(/\/$/, '');
-    const q = encodeURIComponent(remoteUrl);
-    return `${base}/api/opensubtitles/poster-image?url=${q}`;
-}
-
-/**
- * Text to put in the search box after picking a suggestion (matches server clean_work_search_query).
- * API sends searchQuery; older servers may omit it — strip redundant "YEAR -" / "(YEAR)" from title.
- */
-function suggestionSearchText(s) {
-    const fromApi = s && s.searchQuery != null ? String(s.searchQuery).trim() : '';
-    if (fromApi) return fromApi;
-    let t = String((s && s.title) || '').trim();
-    const y = s && s.year;
-    if (y != null && y !== '') {
-        const ys = String(y).trim();
-        if (/^\d{4}$/.test(ys)) {
-            t = t.replace(new RegExp(`^\\s*${ys}\\s*-\\s*`, 'i'), '').trim();
-            t = t.replace(new RegExp(`\\s*\\(\\s*${ys}\\s*\\)\\s*$`, 'i'), '').trim();
-        }
-    }
-    return t.replace(/\s+/g, ' ').trim() || String((s && s.title) || '').trim();
-}
-
-function bindOsPosterImgOnError(img, placeholderClass) {
-    if (!img || img.tagName !== 'IMG') return;
-    img.addEventListener('error', function handleOsPosterImgError() {
-        img.removeEventListener('error', handleOsPosterImgError);
-        const ph = document.createElement('span');
-        ph.className = placeholderClass;
-        ph.setAttribute('aria-hidden', 'true');
-        img.replaceWith(ph);
-    });
-}
-
-function updateOpenSubtitlesSuggestionActiveClasses() {
-    const items = osSuggestionsList.querySelectorAll('.os-suggestion-item');
-    items.forEach((el, i) => {
-        const on = i === activeSuggestionIndex;
-        el.classList.toggle('os-suggestion-item-active', on);
-        el.setAttribute('aria-selected', on ? 'true' : 'false');
-        if (on) el.scrollIntoView({ block: 'nearest' });
-    });
-    if (activeSuggestionIndex >= 0) {
-        osQuery.setAttribute('aria-activedescendant', `os-sugg-${activeSuggestionIndex}`);
-    } else {
-        osQuery.removeAttribute('aria-activedescendant');
-    }
-}
-
-function renderOpenSubtitlesSuggestions(list) {
-    suggestionRows = list;
-    activeSuggestionIndex = -1;
-    osSuggestionsList.innerHTML = '';
-    if (!list.length) {
-        osSuggestionsPanel.hidden = true;
-        osQuery.setAttribute('aria-expanded', 'false');
-        return;
-    }
-    for (let i = 0; i < list.length; i += 1) {
-        const s = list[i];
-        const li = document.createElement('li');
-        li.id = `os-sugg-${i}`;
-        li.setAttribute('role', 'option');
-        li.setAttribute('aria-selected', 'false');
-        li.className = 'os-suggestion-item';
-        const url = normalizeHttpUrl(s.posterUrl);
-        const useProxy = url && /^https?:\/\//i.test(url);
-        const src = useProxy ? posterProxySrc(url) : '';
-        const posterHtml = src
-            ? `<img class="os-suggestion-poster" src="${attrEscapeUrl(src)}" alt="" loading="lazy">`
-            : '<span class="os-suggestion-poster os-suggestion-poster-placeholder" aria-hidden="true"></span>';
-        const yearStr = s.year != null && s.year !== '' ? String(s.year) : '—';
-        let meta = yearStr;
-        if (s.season != null && s.episode != null) meta += ` · S${s.season}E${s.episode}`;
-        const head = suggestionSearchText(s);
-        li.innerHTML = `<div class="os-suggestion-row">${posterHtml}<div class="os-suggestion-text"><span class="os-suggestion-title">${esc(head)}</span><span class="os-suggestion-meta">${esc(meta)}</span></div></div>`;
-        li.addEventListener('mousedown', (e) => e.preventDefault());
-        li.addEventListener('click', () => applyOpenSubtitlesSuggestion(s));
-        osSuggestionsList.appendChild(li);
-        bindOsPosterImgOnError(
-            li.querySelector('img.os-suggestion-poster'),
-            'os-suggestion-poster os-suggestion-poster-placeholder',
-        );
-    }
-    osSuggestionsPanel.hidden = false;
-    osQuery.setAttribute('aria-expanded', 'true');
-}
-
-function applyOpenSubtitlesSuggestion(s) {
-    const label = suggestionSearchText(s);
-    const y = s.year;
-    const yr =
-        y != null && y !== '' && Number.isFinite(Number(y)) ? Math.trunc(Number(y)) : null;
-    osSearchRefine = {
-        year: yr != null && yr >= 1870 && yr <= 2100 ? yr : null,
-        imdbId: s.imdbId && String(s.imdbId).trim() ? String(s.imdbId).trim() : null,
-    };
-    osQuery.value = label;
-    hideOpenSubtitlesSuggestions();
-    osSuggestLive.textContent = `Selected ${label}`;
-    void runOpenSubtitlesSearch({ refreshFromInput: true, resetPage: true, keepRefine: true });
-}
-
-const OS_SUGGEST_DEBOUNCE_MS = 300;
-const OS_SUGGEST_MIN_LEN = 2;
-
-function scheduleFetchOpenSubtitlesSuggestions() {
-    if (suggestDebounceTimer) clearTimeout(suggestDebounceTimer);
-    suggestDebounceTimer = setTimeout(() => {
-        suggestDebounceTimer = null;
-        void fetchOpenSubtitlesSuggestions();
-    }, OS_SUGGEST_DEBOUNCE_MS);
-}
-
-async function fetchOpenSubtitlesSuggestions() {
-    if (!isSearchMode() || !opensubtitlesConfigured) {
-        hideOpenSubtitlesSuggestions();
-        return;
-    }
-    const q = osQuery.value.trim();
-    if (q.length < OS_SUGGEST_MIN_LEN) {
-        hideOpenSubtitlesSuggestions();
-        return;
-    }
-    if (suggestAbort) suggestAbort.abort();
-    suggestAbort = new AbortController();
-    const ac = suggestAbort;
-    osSuggestLive.textContent = 'Loading suggestions…';
-    try {
-        const resp = await fetch(`${API}/api/opensubtitles/suggestions`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: q }),
-            signal: ac.signal,
-        });
-        const data = await resp.json().catch(() => ({}));
-        if (suggestAbort !== ac) return;
-        if (!resp.ok) {
-            hideOpenSubtitlesSuggestions();
-            osSuggestLive.textContent = data.error || 'Suggestions failed';
-            return;
-        }
-        const list = data.suggestions || [];
-        osSuggestLive.textContent =
-            list.length === 0 ? 'No title suggestions' : `${list.length} suggestions`;
-        renderOpenSubtitlesSuggestions(list);
-    } catch (e) {
-        if (e.name === 'AbortError') return;
-        hideOpenSubtitlesSuggestions();
-        osSuggestLive.textContent = '';
-    }
-}
-
-async function refreshSubtitlePreview(row) {
-    if (!fetchedId) {
-        hideSubtitlePreview();
-        return;
-    }
-    const bgRaw = (row && row.backdropUrl) || (row && row.posterUrl);
-    const url = normalizeHttpUrl(bgRaw);
-    if (url && /^https?:\/\//i.test(url)) {
-        subtitlePreviewBg.src = posterProxySrc(url);
-        subtitlePreviewBg.hidden = false;
-    } else {
-        subtitlePreviewBg.removeAttribute('src');
-        subtitlePreviewBg.hidden = true;
-    }
-    previewRequestSeq += 1;
-    const seq = previewRequestSeq;
-    if (previewAbort) previewAbort.abort();
-    previewAbort = new AbortController();
-    try {
-        const prev = await fetch(
-            `${API}/api/opensubtitles/fetched/${encodeURIComponent(fetchedId)}/preview`,
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    sourceLanguage: sourceLanguage.value,
-                    targetLanguage: targetLanguage.value,
-                    dualLanguage: dualLanguage.checked,
-                    wantsTranslate: wantsTranslate(),
-                }),
-                signal: previewAbort.signal,
-            },
-        );
-        if (seq !== previewRequestSeq) return;
-        const data = await prev.json().catch(() => ({}));
-        if (!prev.ok) throw new Error(data.error || 'Preview failed');
-        applyPreviewPayload(data);
-        subtitlePreviewPanel.hidden = false;
-    } catch (e) {
-        if (e.name === 'AbortError') return;
-        if (seq !== previewRequestSeq) return;
-        subtitlePreviewOrig.textContent = fetchedLabel || 'Subtitle ready';
-        subtitlePreviewTrans.hidden = true;
-        subtitlePreviewPinyin.hidden = true;
-        subtitlePreviewPanel.hidden = false;
-    }
-}
-
-function titleCellWithPoster(r) {
-    const url = normalizeHttpUrl(r.posterUrl);
-    const useProxy = url && /^https?:\/\//i.test(url);
-    const src = useProxy ? posterProxySrc(url) : '';
-    const posterHtml = src
-        ? `<img class="os-poster-thumb" src="${attrEscapeUrl(src)}" alt="" loading="lazy">`
-        : '<span class="os-poster-placeholder" aria-hidden="true"></span>';
-    return `<div class="os-title-cell">${posterHtml}<div class="os-title-cell-text">${titleCell(r)}</div></div>`;
-}
-
-function filterAndRenderResults() {
-    osResultsBody.innerHTML = '';
-    let rows = rawSearchResults;
-    if (activeLangFilter !== 'all') {
-        rows = rows.filter((r) => (r.language || '') === activeLangFilter);
-    }
-    if (fetchedId && selectedOsFileId != null) {
-        const visible = new Set(rows.map((r) => String(r.fileId)));
-        if (!visible.has(String(selectedOsFileId))) {
-            clearOpenSubtitlesSelection();
-        }
-    }
-    if (!rows.length) {
-        osResultsTable.hidden = true;
-        return;
-    }
-    osResultsTable.hidden = false;
-    for (const r of rows) {
-        const fid = String(r.fileId);
-        const tr = document.createElement('tr');
-        tr.classList.add('os-result-row');
-        const isSelected = Boolean(fetchedId && selectedOsFileId != null && String(selectedOsFileId) === fid);
-        const isFetching = fetchInProgressFileId != null && String(fetchInProgressFileId) === fid;
-        if (isSelected) tr.classList.add('os-row-selected');
-        if (isFetching) tr.classList.add('os-row-fetching');
-        tr.tabIndex = 0;
-        const rowLabel = r.title || r.fileName || r.release || fid;
-        tr.setAttribute(
-            'aria-label',
-            isFetching
-                ? `Loading subtitle: ${rowLabel}`
-                : isSelected
-                  ? `Selected: ${rowLabel}. Activate to clear selection.`
-                  : `Select subtitle: ${rowLabel}`,
-        );
-        tr.innerHTML = `
-            <td>${titleCellWithPoster(r)}</td>
-            <td>${esc(r.languageName || r.language || '')}</td>
-            <td class="cell-muted">${esc(rowInfo(r))}</td>
-        `;
-        bindOsPosterImgOnError(tr.querySelector('img.os-poster-thumb'), 'os-poster-placeholder');
-        tr.addEventListener('click', () => selectSubtitleFile(r.fileId, r));
-        tr.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                selectSubtitleFile(r.fileId, r);
-            }
-        });
-        osResultsBody.appendChild(tr);
-    }
-}
-
-async function selectSubtitleFile(fileId, row) {
-    const fid = String(fileId);
-    if (fetchedId && selectedOsFileId != null && String(selectedOsFileId) === fid) {
-        clearOpenSubtitlesSelection();
-        filterAndRenderResults();
-        return;
-    }
-    if (fetchInProgressFileId != null) {
-        return;
-    }
-    const label = row.fileName || row.title || fileId;
-    fetchInProgressFileId = fid;
-    filterAndRenderResults();
-    try {
-        const resp = await fetch(`${API}/api/opensubtitles/fetch`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ file_id: fileId }),
-        });
-        const data = await resp.json().catch(() => ({}));
-        if (!resp.ok) {
-            throw new Error(data.error || resp.statusText || 'Fetch failed');
-        }
-        fetchedId = data.fetchedId;
-        fetchedLabel = data.filename || label;
-        selectedOsFileId = fid;
-        applySourceFromOpenSubtitlesRow(row.language);
-        osSearchStatus.textContent = '';
-        lastPreviewRow = row;
-        void refreshSubtitlePreview(row);
-    } catch (e) {
-        console.error(e);
-        osSearchStatus.textContent = e.message || String(e);
-        selectedOsFileId = null;
-        fetchedId = null;
-        fetchedLabel = '';
-        validateLanguages();
-    } finally {
-        fetchInProgressFileId = null;
-        filterAndRenderResults();
-    }
-}
-
-function selectedOptionLabel(selectEl) {
-    const opt = selectEl.options[selectEl.selectedIndex];
-    return opt ? opt.textContent.trim() : '';
-}
-
-function effectiveTotalPages() {
-    let tp = 1;
-    if (osTotalPages != null && osTotalPages >= 1) {
-        tp = osTotalPages;
-    }
-    return Math.min(tp, OS_MAX_PAGER_PAGES);
-}
-
-function updateOsPagerUI() {
-    const tp = effectiveTotalPages();
-    osPagePrev.disabled = osSearchPage <= 1;
-    osPageNext.disabled = osSearchPage >= tp;
-    let info = `Page ${osSearchPage} of ${tp}`;
-    if (osTotalCount != null) {
-        info += ` (${osTotalCount} total)`;
-    }
-    osPageInfo.textContent = info;
-}
-
-function updateOsPagerVisibility() {
-    osPager.hidden = rawSearchResults.length === 0;
-    if (!osPager.hidden) {
-        updateOsPagerUI();
-    }
-}
-
-async function runOpenSubtitlesSearch(options) {
-    hideOpenSubtitlesSuggestions();
-    const refreshFromInput = options && options.refreshFromInput;
-    const resetPage = options && options.resetPage;
-    const keepRefine = options && options.keepRefine;
-    if (refreshFromInput) {
-        const q = osQuery.value.trim();
-        if (!q) {
-            osSearchStatus.textContent = 'Enter a title to search.';
-            return;
-        }
-        const prevQ = osLastSearchQuery;
-        if (!keepRefine && q !== prevQ) {
-            osSearchRefine = { year: null, imdbId: null };
-        }
-        osLastSearchQuery = q;
-        osLastSearchLang = osAnyLanguage.checked ? '' : sourceLanguage.value;
-    }
-    if (!opensubtitlesConfigured) {
-        osSearchStatus.textContent = 'OpenSubtitles is not configured on this server.';
-        return;
-    }
-    if (!osLastSearchQuery) {
-        osSearchStatus.textContent = 'Enter a title to search.';
-        return;
-    }
-    if (resetPage) {
-        osSearchPage = 1;
-    }
-    const perPage = parseInt(osPerPageSelect.value, 10) || 10;
-
-    osSearchBtn.disabled = true;
-    osSearchStatus.textContent = 'Searching…';
-    clearOpenSubtitlesSelection();
-    try {
-        const searchPayload = {
-            query: osLastSearchQuery,
-            language: osLastSearchLang,
-            page: osSearchPage,
-            perPage,
-        };
-        if (osSearchRefine.year != null) {
-            searchPayload.year = osSearchRefine.year;
-        }
-        if (osSearchRefine.imdbId) {
-            searchPayload.imdbId = osSearchRefine.imdbId;
-        }
-        const resp = await fetch(`${API}/api/opensubtitles/search`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(searchPayload),
-        });
-        const data = await resp.json().catch(() => ({}));
-        if (!resp.ok) {
-            throw new Error(data.error || resp.statusText || 'Search failed');
-        }
-        osTotalPages = data.totalPages != null ? data.totalPages : null;
-        osTotalCount = data.totalCount != null ? data.totalCount : null;
-        rawSearchResults = data.results || [];
-        activeLangFilter = 'all';
-        if (!rawSearchResults.length) {
-            osSearchStatus.textContent =
-                'No subtitles found — try another query, widen language (all languages), or upload a file.';
-            osLangChips.hidden = true;
-            osResultsTable.hidden = true;
-            osPager.hidden = true;
-        } else {
-            const shown = rawSearchResults.length;
-            const totalHint = osTotalCount != null ? ` (${osTotalCount} matching overall)` : '';
-            osSearchStatus.textContent = `${shown} result(s) on this page${totalHint}. Pick one subtitle below.`;
-            renderLangChips(rawSearchResults);
-            filterAndRenderResults();
-            updateOsPagerVisibility();
-        }
-    } catch (e) {
-        console.error(e);
-        osSearchStatus.textContent = e.message || String(e);
-        rawSearchResults = [];
-        osLangChips.hidden = true;
-        osResultsTable.hidden = true;
-        osPager.hidden = true;
-        osTotalPages = null;
-        osTotalCount = null;
-    } finally {
-        osSearchBtn.disabled = false;
-    }
-}
-
-osQuery.addEventListener('input', (e) => {
+UI.el.osQuery.addEventListener('input', (e) => {
     if (e.isTrusted) {
-        osSearchRefine = { year: null, imdbId: null };
+        UI.state.osSearchRefine = { year: null, imdbId: null };
     }
-    if (!isSearchMode() || !opensubtitlesConfigured) return;
+    if (!isSearchMode() || !UI.state.opensubtitlesConfigured) return;
     scheduleFetchOpenSubtitlesSuggestions();
 });
 
-osQuery.addEventListener('blur', () => {
+UI.el.osQuery.addEventListener('blur', () => {
     window.setTimeout(() => {
-        if (document.activeElement && osSuggestionsPanel.contains(document.activeElement)) return;
-        if (!osSuggestionsPanel.hidden) {
+        if (document.activeElement && UI.el.osSuggestionsPanel.contains(document.activeElement)) return;
+        if (!UI.el.osSuggestionsPanel.hidden) {
             hideOpenSubtitlesSuggestions();
         }
     }, 180);
 });
 
-osQuery.addEventListener('keydown', (e) => {
-    const panelOpen = !osSuggestionsPanel.hidden && suggestionRows.length > 0;
-    if (e.key === 'Escape') {
-        if (panelOpen) {
-            e.preventDefault();
-            hideOpenSubtitlesSuggestions();
-            osSuggestLive.textContent = 'Suggestions closed';
-        }
-        return;
-    }
-    if (e.key === 'ArrowDown') {
-        if (panelOpen) {
-            e.preventDefault();
-            if (activeSuggestionIndex < suggestionRows.length - 1) {
-                activeSuggestionIndex += 1;
-            } else {
-                activeSuggestionIndex = 0;
-            }
-            updateOpenSubtitlesSuggestionActiveClasses();
-        }
-        return;
-    }
-    if (e.key === 'ArrowUp') {
-        if (panelOpen) {
-            e.preventDefault();
-            if (activeSuggestionIndex > 0) {
-                activeSuggestionIndex -= 1;
-            } else {
-                activeSuggestionIndex = suggestionRows.length - 1;
-            }
-            updateOpenSubtitlesSuggestionActiveClasses();
-        }
-        return;
-    }
-    if (e.key === 'Enter') {
-        if (panelOpen && activeSuggestionIndex >= 0) {
-            e.preventDefault();
-            applyOpenSubtitlesSuggestion(suggestionRows[activeSuggestionIndex]);
-            return;
-        }
-        e.preventDefault();
-        runOpenSubtitlesSearch({ refreshFromInput: true, resetPage: true });
-    }
-});
+UI.el.osQuery.addEventListener('keydown', handleOsQueryKeydown);
 
-osSearchBtn.addEventListener('click', () => {
+UI.el.osSearchBtn.addEventListener('click', () => {
     runOpenSubtitlesSearch({ refreshFromInput: true, resetPage: true });
 });
 
-osPerPageSelect.addEventListener('change', () => {
+UI.el.osPerPageSelect.addEventListener('change', () => {
     runOpenSubtitlesSearch({ refreshFromInput: false, resetPage: true });
 });
 
-osPagePrev.addEventListener('click', () => {
-    if (osSearchPage <= 1) return;
-    osSearchPage -= 1;
+UI.el.osPagePrev.addEventListener('click', () => {
+    if (UI.state.osSearchPage <= 1) return;
+    UI.state.osSearchPage -= 1;
     runOpenSubtitlesSearch({ refreshFromInput: false, resetPage: false });
 });
 
-osPageNext.addEventListener('click', () => {
-    if (osSearchPage >= effectiveTotalPages()) return;
-    osSearchPage += 1;
+UI.el.osPageNext.addEventListener('click', () => {
+    if (UI.state.osSearchPage >= effectiveTotalPages()) return;
+    UI.state.osSearchPage += 1;
     runOpenSubtitlesSearch({ refreshFromInput: false, resetPage: false });
 });
 
-async function loadOpensubtitlesStatus() {
-    try {
-        const resp = await fetch(`${API}/api/opensubtitles/status`);
-        const data = await resp.json();
-        opensubtitlesConfigured = !!data.configured;
-        if (!opensubtitlesConfigured) {
-            hideOpenSubtitlesSuggestions();
-            opensubtitlesHint.hidden = false;
-            opensubtitlesHint.textContent =
-                'OpenSubtitles search is unavailable (server has no API credentials). Use upload instead.';
-            sourceSearch.disabled = true;
-            if (isSearchMode()) {
-                sourceUpload.checked = true;
-                syncSubtitleSourcePanels();
-            }
-        } else {
-            opensubtitlesHint.hidden = true;
-            sourceSearch.disabled = false;
-        }
-    } catch {
-        opensubtitlesHint.hidden = false;
-        opensubtitlesHint.textContent = 'Could not reach server for OpenSubtitles status.';
-    }
-}
+void loadOpensubtitlesStatus();
 
-loadOpensubtitlesStatus();
-
-translationForm.addEventListener('submit', (e) => {
+UI.el.translationForm.addEventListener('submit', (e) => {
     e.preventDefault();
 });
 
-translateConfirmCancel.addEventListener('click', () => {
-    translateConfirmDialog.close();
+UI.el.translateConfirmCancel.addEventListener('click', () => {
+    UI.el.translateConfirmDialog.close();
 });
 
-translateConfirmOk.addEventListener('click', async () => {
-    translateConfirmDialog.close();
+UI.el.translateConfirmOk.addEventListener('click', async () => {
+    UI.el.translateConfirmDialog.close();
     await runTranslation();
 });
 
-translateBtn.addEventListener('click', () => {
-    const errorMessage = document.getElementById('errorMessage');
+UI.el.translateBtn.addEventListener('click', () => {
+    const errorMessage = UI.el.errorMessage;
     if (isSearchMode() && !wantsTranslate()) {
-        if (!fetchedId) {
+        if (!UI.state.fetchedId) {
             errorMessage.textContent =
                 'Search and select a subtitle from the results, or switch to Upload file.';
             errorMessage.style.display = 'block';
@@ -930,344 +189,43 @@ translateBtn.addEventListener('click', () => {
         void runDownloadOriginal();
         return;
     }
-    const source = sourceLanguage.value;
-    const target = targetLanguage.value;
+    const source = UI.el.sourceLanguage.value;
+    const target = UI.el.targetLanguage.value;
     if (source && target && source === target) {
         errorMessage.textContent = 'Source and target languages cannot be the same.';
         errorMessage.style.display = 'block';
         return;
     }
     if (isSearchMode()) {
-        if (!fetchedId) {
+        if (!UI.state.fetchedId) {
             errorMessage.textContent =
                 'Search and select a subtitle from the results, or switch to Upload file.';
             errorMessage.style.display = 'block';
             return;
         }
     } else {
-        if (!fileInput.files || !fileInput.files[0]) {
+        if (!UI.el.fileInput.files || !UI.el.fileInput.files[0]) {
             errorMessage.textContent = 'Please choose a subtitle file to upload.';
             errorMessage.style.display = 'block';
             return;
         }
     }
     errorMessage.style.display = 'none';
-    const fileLabel = isSearchMode() ? fetchedLabel : fileInput.files[0].name;
-    translateConfirmFile.textContent = fileLabel;
-    translateConfirmFrom.textContent = selectedOptionLabel(sourceLanguage);
-    translateConfirmTo.textContent = selectedOptionLabel(targetLanguage);
-    translateConfirmDialog.showModal();
+    const fileLabel = isSearchMode() ? UI.state.fetchedLabel : UI.el.fileInput.files[0].name;
+    UI.el.translateConfirmFile.textContent = fileLabel;
+    UI.el.translateConfirmFrom.textContent = selectedOptionLabel(UI.el.sourceLanguage);
+    UI.el.translateConfirmTo.textContent = selectedOptionLabel(UI.el.targetLanguage);
+    UI.el.translateConfirmDialog.showModal();
 });
-
-async function runDownloadOriginal() {
-    const loadingSpinner = document.getElementById('loadingSpinner');
-    const btnText = document.getElementById('btnText');
-    const errorMessage = document.getElementById('errorMessage');
-    const downloadSection = document.getElementById('downloadSection');
-    const progressBar = document.getElementById('progressBar');
-    const progressPercent = document.getElementById('progressPercent');
-
-    errorMessage.style.display = 'none';
-    downloadSection.style.display = 'none';
-    progressBar.style.display = 'none';
-    progressPercent.style.display = 'none';
-
-    translateBtn.disabled = true;
-    loadingSpinner.style.display = 'inline-block';
-    btnText.textContent = 'Downloading...';
-
-    try {
-        const url = `${API}/api/opensubtitles/fetched/${encodeURIComponent(fetchedId)}/download`;
-        const resp = await fetch(url);
-        if (!resp.ok) {
-            const errText = await resp.text();
-            let msg = errText;
-            try {
-                const j = JSON.parse(errText);
-                if (j.error) msg = j.error;
-            } catch {
-                /* plain */
-            }
-            throw new Error(msg || resp.statusText || 'Download failed');
-        }
-        const blob = await resp.blob();
-        const objUrl = URL.createObjectURL(blob);
-        const downloadBtn = document.getElementById('downloadBtn');
-        downloadBtn.href = objUrl;
-        downloadBtn.download = fetchedLabel || 'subtitle.srt';
-        downloadSuccessMessage.textContent = 'Subtitle file ready.';
-        downloadBtn.textContent = '📥 Download original subtitle';
-        document.getElementById('translationDuration').textContent = '';
-        downloadSection.style.display = 'block';
-        downloadSection.scrollIntoView({ behavior: 'smooth' });
-    } catch (error) {
-        console.error('Download error:', error);
-        let msg = error.message || String(error);
-        try {
-            const parsed = JSON.parse(msg);
-            if (parsed && parsed.error) msg = parsed.error;
-        } catch {
-            /* plain */
-        }
-        const networkFailure =
-            error instanceof TypeError ||
-            msg === 'Failed to fetch' ||
-            /networkerror when attempting to fetch resource/i.test(msg);
-        if (networkFailure) {
-            errorMessage.textContent =
-                'Could not reach the server. Open this app via your Flask URL (e.g. http://127.0.0.1:5000/), not as a file:// page.';
-        } else {
-            errorMessage.textContent = `Error: ${msg}`;
-        }
-        errorMessage.style.display = 'block';
-    } finally {
-        translateBtn.disabled = false;
-        loadingSpinner.style.display = 'none';
-        updatePrimaryButtonLabel();
-    }
-}
-
-async function runTranslation() {
-    const loadingSpinner = document.getElementById('loadingSpinner');
-    const btnText = document.getElementById('btnText');
-    const errorMessage = document.getElementById('errorMessage');
-    const downloadSection = document.getElementById('downloadSection');
-    const progressBar = document.getElementById('progressBar');
-    const progressFill = document.getElementById('progressFill');
-    const progressPercent = document.getElementById('progressPercent');
-    const translationProgressTiming = document.getElementById('translationProgressTiming');
-    const dualLanguage = document.getElementById('dualLanguage');
-
-    errorMessage.style.display = 'none';
-    downloadSection.style.display = 'none';
-    progressBar.style.display = 'block';
-    progressFill.style.width = '0%';
-    progressPercent.style.display = 'block';
-    progressPercent.textContent = '0%';
-
-    const translationStartMs = Date.now();
-    let translationLastProgress = 0;
-    let translationDoneAtMs = null;
-    let translationTimingIntervalId = null;
-    function renderTranslationTiming() {
-        if (!translationProgressTiming) return;
-        const elapsedSec =
-            translationLastProgress >= 100 && translationDoneAtMs != null
-                ? (translationDoneAtMs - translationStartMs) / 1000
-                : (Date.now() - translationStartMs) / 1000;
-        translationProgressTiming.textContent = buildTranslationTimingText(
-            elapsedSec,
-            translationLastProgress,
-        );
-    }
-    if (translationProgressTiming) {
-        translationProgressTiming.hidden = false;
-        renderTranslationTiming();
-        translationTimingIntervalId = setInterval(renderTranslationTiming, 250);
-    }
-
-    translateBtn.disabled = true;
-    loadingSpinner.style.display = 'inline-block';
-    btnText.textContent = 'Translating...';
-
-    try {
-        const taskResponse = await fetch(`${API}/api/task`);
-
-        if (!taskResponse.ok) {
-            const errorText = await taskResponse.text();
-            throw new Error(errorText || 'Server error');
-        }
-
-        const taskJson = await taskResponse.json();
-        const taskId = taskJson.taskId;
-
-        const formData = new FormData();
-        formData.append('sourceLanguage', sourceLanguage.value);
-        formData.append('targetLanguage', targetLanguage.value);
-        formData.append('dualLanguage', dualLanguage.checked ? 'true' : 'false');
-        formData.append('taskId', taskId);
-        if (fetchedId && isSearchMode()) {
-            formData.append('fetchedId', fetchedId);
-        } else {
-            formData.append('srtFile', fileInput.files[0]);
-        }
-
-        const evtSource = new EventSource(`${API}/api/translate/progress/${taskId}`);
-        const ssePromise = new Promise((resolve, reject) => {
-            let completed = false;
-            progressBar.style.display = 'block';
-            progressFill.style.width = '0%';
-            evtSource.onmessage = function (event) {
-                let progress = parseInt(event.data, 10);
-                if (isNaN(progress)) progress = 0;
-                translationLastProgress = progress;
-                if (progress >= 100 && translationDoneAtMs == null) {
-                    translationDoneAtMs = Date.now();
-                }
-                renderTranslationTiming();
-                progressFill.style.width = progress + '%';
-                progressFill.setAttribute('aria-valuenow', progress);
-                progressPercent.textContent = progress + '%';
-                if (progress >= 100 && !completed) {
-                    completed = true;
-                    evtSource.close();
-                    resolve();
-                }
-            };
-            evtSource.onerror = function () {
-                evtSource.close();
-                reject(new Error('Lost connection to progress server.'));
-            };
-        });
-
-        const translatePromise = (async () => {
-            const response = await fetch(`${API}/api/translate`, {
-                method: 'POST',
-                body: formData,
-            });
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(errorText || 'Server error');
-            }
-            const json = await response.json();
-            if (!json.success || !json.downloadUrl) {
-                throw new Error(json.error || 'Translation failed');
-            }
-            return json;
-        })();
-
-        try {
-            await ssePromise;
-        } catch (sseErr) {
-            console.warn(sseErr?.message || sseErr);
-        }
-
-        const json = await translatePromise;
-        const downloadUrl = json.downloadUrl;
-        const translationDuration = json.translationDuration;
-        const serverFilename = json.filename;
-
-        const srtResponse = await fetch(`${API}${downloadUrl}`);
-        if (!srtResponse.ok) {
-            throw new Error('Failed to download translated subtitle file');
-        }
-        const translatedContent = await srtResponse.text();
-
-        const blob = new Blob([translatedContent], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const downloadBtn = document.getElementById('downloadBtn');
-        downloadBtn.href = url;
-        const targetLang = formData.get('targetLanguage');
-        let newFileName = serverFilename;
-        if (!newFileName) {
-            const originalFileName = isSearchMode()
-                ? fetchedLabel || 'subtitle.srt'
-                : fileInput.files[0].name;
-            const dualSuffix = dualLanguage?.checked ? '_dual' : '';
-            newFileName = originalFileName.replace(
-                /\.(srt|ass|ssa|sub)$/i,
-                `_GoogleTrans_${targetLang}${dualSuffix}.$1`
-            );
-            if (newFileName === originalFileName) {
-                newFileName = originalFileName + `_GoogleTrans_${targetLang}${dualSuffix}`;
-            }
-        }
-        downloadBtn.download = newFileName;
-        downloadSuccessMessage.textContent = 'Translation completed successfully! 🎉';
-        downloadBtn.textContent = '📥 Download translated subtitle';
-
-        const durationDiv = document.getElementById('translationDuration');
-        if (translationDuration) {
-            durationDiv.textContent = `Time for translation to complete: ${translationDuration}`;
-        } else {
-            durationDiv.textContent = '';
-        }
-
-        if (isSearchMode()) {
-            releaseFetchedAfterTranslate();
-        }
-
-        downloadSection.style.display = 'block';
-        downloadSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    } catch (error) {
-        console.error('Translation error:', error);
-        let msg = error.message || String(error);
-        try {
-            const parsed = JSON.parse(msg);
-            if (parsed && parsed.error) msg = parsed.error;
-        } catch {
-            /* plain text */
-        }
-        const networkFailure =
-            error instanceof TypeError ||
-            msg === 'Failed to fetch' ||
-            /networkerror when attempting to fetch resource/i.test(msg) ||
-            msg.includes('Lost connection to progress server');
-        if (networkFailure) {
-            errorMessage.textContent =
-                'Could not reach the translation server. Open this app at http://127.0.0.1:5000/ after running python app.py (do not open index.html as a file:// page). If you use another dev port or HTTPS, set the subtitle-translator-api-base meta tag in index.html to your Flask URL (e.g. http://127.0.0.1:5000). Note: an HTTPS page cannot call an HTTP API (mixed content).';
-        } else {
-            errorMessage.textContent = `Error: ${msg}. Please check your file format (SRT, ASS, SSA, SUB) and try again.`;
-        }
-        errorMessage.style.display = 'block';
-        progressFill.style.width = '0%';
-    } finally {
-        if (translationTimingIntervalId != null) {
-            clearInterval(translationTimingIntervalId);
-            translationTimingIntervalId = null;
-        }
-        if (translationProgressTiming) {
-            translationProgressTiming.hidden = true;
-            translationProgressTiming.textContent = '';
-        }
-        translateBtn.disabled = false;
-        loadingSpinner.style.display = 'none';
-        updatePrimaryButtonLabel();
-        setTimeout(() => {
-            progressBar.style.display = 'none';
-            progressFill.style.width = '0%';
-            progressPercent.style.display = 'none';
-            progressPercent.textContent = '0%';
-        }, 1000);
-    }
-}
 
 function onLanguageOrDualChange() {
     validateLanguages();
     scheduleSubtitlePreviewRefresh();
 }
 
-sourceLanguage.addEventListener('change', onLanguageOrDualChange);
-targetLanguage.addEventListener('change', onLanguageOrDualChange);
-dualLanguage.addEventListener('change', onLanguageOrDualChange);
-
-function validateLanguages() {
-    const source = sourceLanguage.value;
-    const target = targetLanguage.value;
-    const errorMessage = document.getElementById('errorMessage');
-    const langClashMsg = 'Source and target languages cannot be the same.';
-
-    if (!wantsTranslate()) {
-        if (errorMessage.textContent === langClashMsg) {
-            errorMessage.style.display = 'none';
-        }
-        translateBtn.disabled = isSearchMode() && !fetchedId;
-        return;
-    }
-
-    if (source && target && source === target) {
-        errorMessage.textContent = langClashMsg;
-        errorMessage.style.display = 'block';
-        translateBtn.disabled = true;
-        return;
-    }
-    if (errorMessage.textContent === langClashMsg) {
-        errorMessage.style.display = 'none';
-    }
-    const needFile = !isSearchMode() && (!fileInput.files || !fileInput.files[0]);
-    const needFetch = isSearchMode() && !fetchedId;
-    translateBtn.disabled = needFile || needFetch;
-}
+UI.el.sourceLanguage.addEventListener('change', onLanguageOrDualChange);
+UI.el.targetLanguage.addEventListener('change', onLanguageOrDualChange);
+UI.el.dualLanguage.addEventListener('change', onLanguageOrDualChange);
 
 updatePrimaryButtonLabel();
 validateLanguages();
