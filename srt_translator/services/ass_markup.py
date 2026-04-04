@@ -1,10 +1,7 @@
 """HTML inline styling to ASS override codes; plaintext extraction for translation."""
 from __future__ import annotations
 
-import json
-import os
 import re
-import time
 from html.parser import HTMLParser
 
 _HTML_TAG_START = re.compile(r"<\s*/?\s*[a-zA-Z]")
@@ -90,31 +87,7 @@ def html_styling_tags_to_ass(text: str) -> str:
     try:
         p.feed(text)
         p.close()
-    except Exception as _e:
-        # #region agent log
-        try:
-            _root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-            _path = os.path.join(_root, "debug-2f4cd1.log")
-            _line = (
-                json.dumps(
-                    {
-                        "sessionId": "2f4cd1",
-                        "hypothesisId": "H3",
-                        "location": "ass_markup.py:html_styling_tags_to_ass",
-                        "message": "HTMLParser exception; returning raw text",
-                        "data": {"err_type": type(_e).__name__, "err_msg": str(_e)[:200]},
-                        "timestamp": int(time.time() * 1000),
-                        "runId": "pre-fix",
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n"
-            )
-            with open(_path, "a", encoding="utf-8") as _df:
-                _df.write(_line)
-        except Exception:
-            pass
-        # #endregion
+    except Exception:
         return text
     return "".join(p._out)
 

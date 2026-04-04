@@ -1,78 +1,13 @@
-/**
- * API origin for fetch/SSE. Empty string = same host/port as the page (e.g. python app.py).
- * If you use a static server only (e.g. python -m http.server 8080), set a meta tag:
- *   <meta name="subtitle-translator-api-base" content="http://127.0.0.1:5000">
- * or we default localhost:5000 when the page is on :8080 or :5500 (Live Server).
- */
-function getApiBase() {
-    const meta = document.querySelector('meta[name="subtitle-translator-api-base"]');
-    if (meta) {
-        const v = (meta.getAttribute('content') || '').trim();
-        if (v) return v.replace(/\/$/, '');
-    }
-    const port = window.location.port;
-    const host = window.location.hostname;
-    if (
-        (port === '8080' || port === '5500' || port === '3000') &&
-        (host === 'localhost' || host === '127.0.0.1')
-    ) {
-        return `${window.location.protocol}//${host}:5000`;
-    }
-    return '';
-}
+import { getApiBase } from './api-base.js';
+import { setupFileUpload } from './file-upload.js';
+import { attrEscapeUrl, esc } from './string-utils.js';
+import { buildTranslationTimingText } from './timing-utils.js';
 
 const API = getApiBase();
 
-// --- File upload UI ---
 const fileInput = document.getElementById('srtFile');
 const fileDisplay = document.getElementById('fileDisplay');
-const fileIcon = fileDisplay.querySelector('.file-icon');
-const fileText = fileDisplay.querySelector('.file-text');
-
-fileInput.addEventListener('change', function (e) {
-    const file = e.target.files[0];
-    if (file) {
-        fileDisplay.classList.add('has-file');
-        fileText.classList.add('has-file');
-        fileText.textContent = `Selected: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
-        fileIcon.textContent = '✅';
-    } else {
-        resetFileInput();
-    }
-    validateLanguages();
-});
-
-function resetFileInput() {
-    fileDisplay.classList.remove('has-file');
-    fileText.classList.remove('has-file');
-    fileText.textContent = 'Click to browse or drag SRT, ASS, SSA, or SUB file here';
-    fileIcon.textContent = '📁';
-    fileInput.value = '';
-    validateLanguages();
-}
-
-fileDisplay.addEventListener('dragover', function (e) {
-    e.preventDefault();
-    fileDisplay.style.borderColor = '#764ba2';
-    fileDisplay.style.background = '#f0f2ff';
-});
-
-fileDisplay.addEventListener('dragleave', function (e) {
-    e.preventDefault();
-    fileDisplay.style.borderColor = '#667eea';
-    fileDisplay.style.background = '#f8f9ff';
-});
-
-fileDisplay.addEventListener('drop', function (e) {
-    e.preventDefault();
-    const files = e.dataTransfer.files;
-    if (files.length > 0 && /\.(srt|ass|ssa|sub)$/i.test(files[0].name)) {
-        fileInput.files = files;
-        fileInput.dispatchEvent(new Event('change'));
-    }
-    fileDisplay.style.borderColor = '#667eea';
-    fileDisplay.style.background = '#f8f9ff';
-});
+const { resetFileInput } = setupFileUpload(fileInput, fileDisplay, validateLanguages);
 
 // --- OpenSubtitles search ---
 const sourceSearch = document.getElementById('sourceSearch');
@@ -327,16 +262,6 @@ function renderLangChips(rows) {
     for (const k of keys) {
         addChip(k, displayLanguageLabel(k, rows), counts.get(k));
     }
-}
-
-function esc(s) {
-    const d = document.createElement('div');
-    d.textContent = s == null ? '' : String(s);
-    return d.innerHTML;
-}
-
-function attrEscapeUrl(s) {
-    return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
 
 /** Map OpenSubtitles subtitle language code to #sourceLanguage option value. */
@@ -1100,36 +1025,6 @@ async function runDownloadOriginal() {
         loadingSpinner.style.display = 'none';
         updatePrimaryButtonLabel();
     }
-}
-
-function formatDurationMmSs(totalSec) {
-    const s = Math.max(0, Math.floor(totalSec));
-    const m = Math.floor(s / 60);
-    const r = s % 60;
-    return `${m}:${String(r).padStart(2, '0')}`;
-}
-
-/** Elapsed wall time + ETA from linear extrapolation of percent complete. */
-function buildTranslationTimingText(elapsedSec, progress) {
-    const elapsedStr = formatDurationMmSs(elapsedSec);
-    if (progress >= 100) {
-        return `Finished in ${elapsedStr}`;
-    }
-    let text = `Elapsed ${elapsedStr}`;
-    if (progress <= 0) {
-        return `${text} · …`;
-    }
-    if (progress < 2) {
-        return `${text} · Estimating time remaining…`;
-    }
-    const etaSec = (elapsedSec * (100 - progress)) / progress;
-    if (!Number.isFinite(etaSec) || etaSec <= 0) {
-        return text;
-    }
-    if (etaSec >= 3600) {
-        return `${text} · ~${formatDurationMmSs(3600)}+ left`;
-    }
-    return `${text} · ~${formatDurationMmSs(etaSec)} left`;
 }
 
 async function runTranslation() {
