@@ -13,6 +13,12 @@ from srt_translator.services.fetched_subtitle_file import (
     resolve_fetched_subtitle_file,
 )
 from srt_translator.services.srt_entry import SRTEntry
+from srt_translator.services.ass_markup import (
+    ass_escape_plain_text,
+    escape_ass_plain_runs,
+    html_styling_tags_to_ass,
+    plain_text_for_translation_ass,
+)
 import logging
 import uuid
 import os
@@ -35,20 +41,55 @@ api_bp = Blueprint('api', __name__)
 translation_progress = {}
 
 
-def _ass_escape_plain(s: str) -> str:
-    return (s or '').replace('\\', '\\\\')
+# #region agent log
+def _dbg_ass_ndjson(hypothesis_id: str, location: str, message: str, data: dict) -> None:
+    import json
+    import time as _time
+
+    try:
+        _root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        _path = os.path.join(_root, "debug-2f4cd1.log")
+
+        def _trunc(v, n: int = 280):
+            if not isinstance(v, str):
+                return v
+            return v[:n] + ("..." if len(v) > n else "")
+
+        safe = {k: _trunc(v) if isinstance(v, str) else v for k, v in data.items()}
+        line = (
+            json.dumps(
+                {
+                    "sessionId": "2f4cd1",
+                    "hypothesisId": hypothesis_id,
+                    "location": location,
+                    "message": message,
+                    "data": safe,
+                    "timestamp": int(_time.time() * 1000),
+                    "runId": "pre-fix",
+                },
+                ensure_ascii=False,
+            )
+            + "\n"
+        )
+        with open(_path, "a", encoding="utf-8") as _df:
+            _df.write(line)
+    except Exception:
+        pass
+
+
+# #endregion
 
 
 def _ass_english_line(text: str) -> str:
-    return f"{{\\fs10}}{_ass_escape_plain(text)}{{\\r}}"
+    return f"{{\\fs10}}{escape_ass_plain_runs(text)}{{\\r}}"
 
 
 def _ass_chinese_line(text: str) -> str:
-    return f"{{\\fs12}}{_ass_escape_plain(text)}{{\\r}}"
+    return f"{{\\fs12}}{escape_ass_plain_runs(text)}{{\\r}}"
 
 
 def _ass_pinyin_line(pinyin_plain: str) -> str:
-    return f"{{\\fs8}}{_ass_escape_plain(pinyin_plain)}{{\\r}}"
+    return f"{{\\fs8}}{ass_escape_plain_text(pinyin_plain)}{{\\r}}"
 
 
 def _join_srt_text_lines(lines: list) -> str:
@@ -311,14 +352,37 @@ def translate_srt():
             else:
                 translated_filename = f"{base_name}_{target_lang}{'_dual' if dual_language else ''}.srt"
         elif fmt == 'ass':
-            texts = [d['text'] for d in parsed['dialogues']]
-            total_lines = len(texts)
+            texts_raw = [d['text'] for d in parsed['dialogues']]
+            texts_plain = [plain_text_for_translation_ass(t) for t in texts_raw]
+            total_lines = len(texts_raw)
+            # #region agent log
+            if texts_raw:
+                _s0 = texts_raw[0]
+                from srt_translator.services.ass_markup import _HTML_TAG_START as _dbg_hts
+
+                _conv0 = html_styling_tags_to_ass(_s0)
+                _dbg_ass_ndjson(
+                    "H2",
+                    "api/__init__.py:ass:pre_translate",
+                    "first dialogue before translate",
+                    {
+                        "dual_language": dual_language,
+                        "use_pinyin": use_pinyin,
+                        "raw_len": len(_s0 or ""),
+                        "raw_has_angle_i": "<i>" in (_s0 or "").lower(),
+                        "htmlish_regex": bool(_dbg_hts.search(_s0 or "")),
+                        "conv_has_angle_i": "<i>" in (_conv0 or "").lower(),
+                        "raw_snip": _s0 or "",
+                        "conv_snip": _conv0 or "",
+                    },
+                )
+            # #endregion
             translated_texts = []
             async def do_translate_ass_async():
                 async with Translator() as translator:
                     batch_size = 100
                     for i in range(0, total_lines, batch_size):
-                        batch = texts[i:i+batch_size]
+                        batch = texts_plain[i:i+batch_size]
                         translated_batch = await translation_service.translate_texts(
                             batch, source_lang, google_dest, translator
                         )
@@ -328,10 +392,10 @@ def translate_srt():
             asyncio.run(do_translate_ass_async())
             if use_pinyin and dual_language:
                 combined_texts = [
-                    f"{_ass_english_line(_collapse_ass_dialogue(orig))}\\N"
+                    f"{_ass_english_line(_collapse_ass_dialogue(html_styling_tags_to_ass(orig)))}\\N"
                     f"{_ass_chinese_line(_collapse_ass_dialogue(tran))}\\N"
                     f"{_ass_pinyin_line(line_to_pinyin(_collapse_ass_dialogue(tran)))}"
-                    for orig, tran in zip(texts, translated_texts)
+                    for orig, tran in zip(texts_raw, translated_texts)
                 ]
                 translated_content = SubtitleParser.to_ass(parsed, combined_texts)
             elif use_pinyin and not dual_language:
@@ -343,14 +407,39 @@ def translate_srt():
                 translated_content = SubtitleParser.to_ass(parsed, combined_texts)
             elif dual_language:
                 combined_texts = [
-                    f"{_ass_english_line(_collapse_ass_dialogue(orig))}\\N"
+                    f"{_ass_english_line(_collapse_ass_dialogue(html_styling_tags_to_ass(orig)))}\\N"
                     f"{_ass_chinese_line(_collapse_ass_dialogue(tran))}"
-                    for orig, tran in zip(texts, translated_texts)
+                    for orig, tran in zip(texts_raw, translated_texts)
                 ]
                 translated_content = SubtitleParser.to_ass(parsed, combined_texts)
             else:
                 combined_texts = [_ass_chinese_line(_collapse_ass_dialogue(t)) for t in translated_texts]
                 translated_content = SubtitleParser.to_ass(parsed, combined_texts)
+            # #region agent log
+            _branch = (
+                "pinyin_dual"
+                if use_pinyin and dual_language
+                else "pinyin_solo"
+                if use_pinyin
+                else "dual"
+                if dual_language
+                else "solo"
+            )
+            _t0 = translated_texts[0] if translated_texts else ""
+            _c0 = combined_texts[0] if combined_texts else ""
+            _dbg_ass_ndjson(
+                "H1",
+                "api/__init__.py:ass:post_combine",
+                "branch and first combined dialogue text",
+                {
+                    "branch": _branch,
+                    "tran0_has_angle_i": "<i>" in (_t0 or "").lower(),
+                    "combined0_has_angle_i": "<i>" in (_c0 or "").lower(),
+                    "tran0_snip": _t0 or "",
+                    "combined0_snip": _c0 or "",
+                },
+            )
+            # #endregion
             translated_filename = f"{base_name}_{target_lang}{'_dual' if dual_language else ''}.ass"
         elif fmt == 'sub':
             texts = [d['text'] for d in parsed['subs']]

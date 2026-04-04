@@ -126,14 +126,22 @@ From the project root:
 python -m pytest -q
 ```
 
+This collects only the **`tests/`** package (see `pytest.ini`). You do **not** need to start Flask for those runs; they use Flask’s in-process client. OpenSubtitles calls are mocked where needed.
+
+**End-to-end (browser) tests** live in **`e2e/`** and are **not** run by the command above. They start a real Flask server on an ephemeral port with a **fake OpenSubtitles client** (no real API calls, no rate-limit use) and a **fake translator** matching the mapping in `tests/conftest.py`. Run them explicitly:
+
+```
+python -m pip install -r requirements.txt
+playwright install chromium
+python -m pytest e2e -q --browser chromium
+```
+
 If you see "pytest is not recognized":
 
 ```
 python -m pip install -U pytest
 python -m pytest -q
 ```
-
-You do **not** need to start Flask or a static server; tests use Flask’s in-process client. OpenSubtitles calls are mocked where needed.
 
 ## Project Structure
 
@@ -156,6 +164,11 @@ project root/
 │       ├── subtitle_parser.py
 │       ├── opensubtitles_client.py # Login, search, download (server-side)
 │       └── opensubtitles_lang.py   # UI language → OpenSubtitles codes
+├── e2e/                            # Browser E2E (pytest e2e); not run by default pytest
+│   ├── conftest.py
+│   ├── fixtures/
+│   └── test_*.py
+├── pytest.ini
 ├── requirements.txt
 └── tests/
     ├── conftest.py

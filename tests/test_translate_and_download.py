@@ -191,6 +191,29 @@ def test_translate_ass_dual(client, patch_translator):
     assert 'How are you?' in content and '你好吗？' in content
 
 
+def test_translate_ass_dual_converts_html_styling_tags(client, patch_translator):
+    ass_html = """[Script Info]
+Title: Test
+ScriptType: v4.00+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,<i>Hello</i> <b>world</b>
+"""
+    resp = post_translate_file(
+        client, 'sample.ass', ass_html.encode('utf-8'), dual=True
+    )
+    assert resp.status_code == 200
+    dl = client.get(resp.get_json()['downloadUrl'])
+    content = dl.data.decode('utf-8')
+    assert '{\\i1}' in content and '{\\i0}' in content
+    assert '{\\b1}' in content and '{\\b0}' in content
+    assert '<i>' not in content and '<b>' not in content
+    assert '你好' in content
+
+
 def test_translate_sub_non_dual(client, patch_translator):
     resp = post_translate_file(client, 'sample.sub', make_sub(), dual=False)
     assert resp.status_code == 200
