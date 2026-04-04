@@ -10,22 +10,22 @@ todos:
     status: completed
   - id: journey-search
     content: E2E — OpenSubtitles path (mocked OS by default) — search → select result → confirm → translate → download → assert subtitle file content
-    status: pending
+    status: completed
   - id: os-api-load
     content: Document/implement low-call strategy — mocked OS in CI; optional live-OS marker with narrow queries, no pagination spam, session-scoped fetch where possible
-    status: pending
+    status: completed
   - id: journey-upload
     content: E2E — upload fixture .srt → same translate → download → assert output (dual-lang / pinyin variants as needed)
-    status: pending
+    status: completed
   - id: settings-matrix
     content: Parametrize translate/output settings; avoid N× real OpenSubtitles searches — share one fetched subtitle across cases or use upload path for matrix-heavy runs
-    status: pending
+    status: completed
   - id: selectors-policy
     content: Document/assertion policy — getByRole/getByLabel + download events; add data-testid only on ambiguous dynamic nodes (e.g. table rows)
-    status: pending
+    status: completed
   - id: pytest-defaults
     content: pytest.ini — testpaths + skip e2e by default; document commands for full vs e2e runs
-    status: pending
+    status: completed
   - id: ci
     content: Optional GitHub Actions — playwright install --with-deps; run e2e with explicit path or override-ini
     status: completed
