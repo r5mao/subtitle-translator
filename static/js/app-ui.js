@@ -1,14 +1,11 @@
-/** Shared UI state and DOM refs (filled by main.js before handlers run). */
-
 export const OS_MAX_PAGER_PAGES = 10;
-
+/** Shared UI state and DOM refs (filled by main.ts before handlers run). */
 export const UI = {
     api: '',
     el: {},
-    /** Filled by main.js (avoids circular imports). */
     callbacks: {
-        syncSubtitleSourcePanels: () => {},
-        resetFileInput: () => {},
+        syncSubtitleSourcePanels: () => { },
+        resetFileInput: () => { },
     },
     state: {
         opensubtitlesConfigured: false,
@@ -34,3 +31,4 @@ export const UI = {
         previewDebounceTimer: null,
     },
 };
+//# sourceMappingURL=app-ui.js.map

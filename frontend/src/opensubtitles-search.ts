@@ -1,8 +1,30 @@
 import { UI, OS_MAX_PAGER_PAGES } from './app-ui.js';
 import { isSearchMode } from './language-and-source-ui.js';
 import { hideOpenSubtitlesSuggestions } from './opensubtitles-suggestions.js';
-import { clearOpenSubtitlesSelection, filterAndRenderResults, renderLangChips, } from './opensubtitles-results-table.js';
-export function effectiveTotalPages() {
+import {
+    clearOpenSubtitlesSelection,
+    filterAndRenderResults,
+    renderLangChips,
+} from './opensubtitles-results-table.js';
+import type { OpenSubtitlesRow, RunOpenSubtitlesSearchOptions } from './types/opensubtitles.js';
+
+interface SearchPayload {
+    query: string;
+    language: string;
+    page: number;
+    perPage: number;
+    year?: number;
+    imdbId?: string;
+}
+
+interface SearchApiResponse {
+    error?: string;
+    totalPages?: number | null;
+    totalCount?: number | null;
+    results?: OpenSubtitlesRow[];
+}
+
+export function effectiveTotalPages(): number {
     const { state } = UI;
     let tp = 1;
     if (state.osTotalPages != null && state.osTotalPages >= 1) {
@@ -10,7 +32,8 @@ export function effectiveTotalPages() {
     }
     return Math.min(tp, OS_MAX_PAGER_PAGES);
 }
-export function updateOsPagerUI() {
+
+export function updateOsPagerUI(): void {
     const { state } = UI;
     const tp = effectiveTotalPages();
     UI.el.osPagePrev.disabled = state.osSearchPage <= 1;
@@ -21,14 +44,16 @@ export function updateOsPagerUI() {
     }
     UI.el.osPageInfo.textContent = info;
 }
-export function updateOsPagerVisibility() {
+
+export function updateOsPagerVisibility(): void {
     const { state } = UI;
     UI.el.osPager.hidden = state.rawSearchResults.length === 0;
     if (!UI.el.osPager.hidden) {
         updateOsPagerUI();
     }
 }
-export async function runOpenSubtitlesSearch(options) {
+
+export async function runOpenSubtitlesSearch(options?: RunOpenSubtitlesSearchOptions): Promise<void> {
     const { state } = UI;
     hideOpenSubtitlesSuggestions();
     const refreshFromInput = options?.refreshFromInput;
@@ -59,11 +84,12 @@ export async function runOpenSubtitlesSearch(options) {
         state.osSearchPage = 1;
     }
     const perPage = parseInt(UI.el.osPerPageSelect.value, 10) || 10;
+
     UI.el.osSearchBtn.disabled = true;
     UI.el.osSearchStatus.textContent = 'Searching…';
     clearOpenSubtitlesSelection();
     try {
-        const searchPayload = {
+        const searchPayload: SearchPayload = {
             query: state.osLastSearchQuery,
             language: state.osLastSearchLang,
             page: state.osSearchPage,
@@ -80,7 +106,7 @@ export async function runOpenSubtitlesSearch(options) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(searchPayload),
         });
-        const data = (await resp.json().catch(() => ({})));
+        const data = (await resp.json().catch(() => ({}))) as SearchApiResponse;
         if (!resp.ok) {
             throw new Error(data.error || resp.statusText || 'Search failed');
         }
@@ -94,8 +120,7 @@ export async function runOpenSubtitlesSearch(options) {
             UI.el.osLangChips.hidden = true;
             UI.el.osResultsTable.hidden = true;
             UI.el.osPager.hidden = true;
-        }
-        else {
+        } else {
             const shown = state.rawSearchResults.length;
             const totalHint = state.osTotalCount != null ? ` (${state.osTotalCount} matching overall)` : '';
             UI.el.osSearchStatus.textContent = `${shown} result(s) on this page${totalHint}. Pick one subtitle below.`;
@@ -103,8 +128,7 @@ export async function runOpenSubtitlesSearch(options) {
             filterAndRenderResults();
             updateOsPagerVisibility();
         }
-    }
-    catch (e) {
+    } catch (e: unknown) {
         console.error(e);
         const msg = e instanceof Error ? e.message : String(e);
         UI.el.osSearchStatus.textContent = msg;
@@ -114,16 +138,20 @@ export async function runOpenSubtitlesSearch(options) {
         UI.el.osPager.hidden = true;
         state.osTotalPages = null;
         state.osTotalCount = null;
-    }
-    finally {
+    } finally {
         UI.el.osSearchBtn.disabled = false;
     }
 }
-export async function loadOpensubtitlesStatus() {
+
+interface StatusApiResponse {
+    configured?: boolean;
+}
+
+export async function loadOpensubtitlesStatus(): Promise<void> {
     const { state } = UI;
     try {
         const resp = await fetch(`${UI.api}/api/opensubtitles/status`);
-        const data = (await resp.json());
+        const data = (await resp.json()) as StatusApiResponse;
         state.opensubtitlesConfigured = !!data.configured;
         if (!state.opensubtitlesConfigured) {
             hideOpenSubtitlesSuggestions();
@@ -135,15 +163,12 @@ export async function loadOpensubtitlesStatus() {
                 UI.el.sourceUpload.checked = true;
                 UI.callbacks.syncSubtitleSourcePanels();
             }
-        }
-        else {
+        } else {
             UI.el.opensubtitlesHint.hidden = true;
             UI.el.sourceSearch.disabled = false;
         }
-    }
-    catch {
+    } catch {
         UI.el.opensubtitlesHint.hidden = false;
         UI.el.opensubtitlesHint.textContent = 'Could not reach server for OpenSubtitles status.';
     }
 }
-//# sourceMappingURL=opensubtitles-search.js.map

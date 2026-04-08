@@ -1,6 +1,6 @@
-# SRT Subtitle Translator
+# Subtitle Translator
 
-A web application for translating subtitle files between languages using Google Translate, built with Flask and a vanilla HTML/JS frontend.
+A web application for translating subtitle files between languages using Google Translate, built with Flask and a vanilla HTML frontend. UI scripts are written in **TypeScript** under `frontend/src/` and compiled to `static/js/` (`npm run build`).
 
 ## Features
 
@@ -27,6 +27,7 @@ Captured with [Playwright](https://playwright.dev/python/) against a local Flask
 
 - Python 3.8+ (**googletrans 4.0.2** uses current `httpx` and does not need the old stdlib `cgi` module)
 - Dependencies are pinned in `requirements.txt` (Flask, Flask-CORS, **googletrans 4.0.2**, python-dotenv, etc.)
+- **Node.js** (current LTS is fine) only if you change the frontend: TypeScript is compiled with `npm run build` into `static/js/`. Running the app from an existing clone uses the committed JS output without Node.
 
 ## Installation
 
@@ -43,6 +44,12 @@ Captured with [Playwright](https://playwright.dev/python/) against a local Flask
    ```
    pip install -r requirements.txt
    ```
+4. If you edit **`frontend/src/`**, install JS tooling and rebuild the browser bundle:
+   ```
+   npm ci
+   npm run build
+   ```
+   This writes ES modules and source maps into `static/js/`. Use `npm run typecheck` for `tsc --noEmit` only.
 
 ## Configuration (optional OpenSubtitles)
 
@@ -128,10 +135,12 @@ python -m pytest -q
 
 This collects only the **`tests/`** package (see `pytest.ini`). You do **not** need to start Flask for those runs; they use Flask’s in-process client. OpenSubtitles calls are mocked where needed.
 
-**End-to-end (browser) tests** live in **`e2e/`** and are **not** run by the command above. They start a real Flask server on an ephemeral port with a **fake OpenSubtitles client** (no real API calls, no rate-limit use) and a **fake translator** matching the mapping in `tests/conftest.py`. Run them explicitly:
+**End-to-end (browser) tests** live in **`e2e/`** and are **not** run by the command above. They start a real Flask server on an ephemeral port with a **fake OpenSubtitles client** (no real API calls, no rate-limit use) and a **fake translator** matching the mapping in `tests/conftest.py`. Run them explicitly (build the frontend first so `static/js/` matches `frontend/src/`):
 
 ```
 python -m pip install -r requirements.txt
+npm ci
+npm run build
 playwright install chromium
 python -m pytest e2e -q --browser chromium
 ```
@@ -149,10 +158,13 @@ python -m pytest -q
 project root/
 ├── app.py                          # Entry: run Flask
 ├── index.html                      # Frontend UI
+├── frontend/src/                   # TypeScript sources (build → static/js/)
+├── package.json                    # npm scripts: build, typecheck
+├── tsconfig.json                   # tsc: ES modules → static/js/
 ├── docs/images/                    # README screenshots (regenerate via scripts/)
 ├── scripts/
 │   └── capture_readme_screenshots.py
-├── static/                         # CSS, JS, favicon
+├── static/                         # CSS, compiled JS, favicon
 ├── srt_translator/
 │   ├── __init__.py                 # create_app(), loads .env from project root
 │   ├── config.py

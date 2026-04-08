@@ -1,7 +1,9 @@
 import { UI } from './app-ui.js';
 import { normalizeHttpUrl, posterProxySrc } from './opensubtitles-format.js';
 import { wantsTranslate } from './language-and-source-ui.js';
-export function hideSubtitlePreview() {
+import type { OpenSubtitlesRow } from './types/opensubtitles.js';
+
+export function hideSubtitlePreview(): void {
     UI.el.subtitlePreviewPanel.hidden = true;
     UI.el.subtitlePreviewBg.removeAttribute('src');
     UI.el.subtitlePreviewBg.hidden = true;
@@ -11,19 +13,27 @@ export function hideSubtitlePreview() {
     UI.el.subtitlePreviewPinyin.textContent = '';
     UI.el.subtitlePreviewPinyin.hidden = true;
 }
-function applyPreviewPayload(data) {
+
+interface PreviewApiResponse {
+    error?: string;
+    originalLines?: string[];
+    sampleLines?: string[];
+    translatedLines?: string[];
+    pinyinLines?: string[];
+}
+
+function applyPreviewPayload(data: PreviewApiResponse): void {
     const orig = Array.isArray(data.originalLines)
         ? data.originalLines
         : Array.isArray(data.sampleLines)
-            ? data.sampleLines
-            : [];
+          ? data.sampleLines
+          : [];
     UI.el.subtitlePreviewOrig.textContent = orig.length ? orig.join(' ') : '—';
     const trans = data.translatedLines;
     if (Array.isArray(trans) && trans.length) {
         UI.el.subtitlePreviewTrans.textContent = trans.join(' ');
         UI.el.subtitlePreviewTrans.hidden = false;
-    }
-    else {
+    } else {
         UI.el.subtitlePreviewTrans.textContent = '';
         UI.el.subtitlePreviewTrans.hidden = true;
     }
@@ -31,23 +41,22 @@ function applyPreviewPayload(data) {
     if (Array.isArray(pin) && pin.length) {
         UI.el.subtitlePreviewPinyin.textContent = pin.join(' ');
         UI.el.subtitlePreviewPinyin.hidden = false;
-    }
-    else {
+    } else {
         UI.el.subtitlePreviewPinyin.textContent = '';
         UI.el.subtitlePreviewPinyin.hidden = true;
     }
 }
-export function scheduleSubtitlePreviewRefresh() {
+
+export function scheduleSubtitlePreviewRefresh(): void {
     const { state } = UI;
-    if (!state.fetchedId || !state.lastPreviewRow)
-        return;
-    if (state.previewDebounceTimer !== null)
-        clearTimeout(state.previewDebounceTimer);
+    if (!state.fetchedId || !state.lastPreviewRow) return;
+    if (state.previewDebounceTimer !== null) clearTimeout(state.previewDebounceTimer);
     state.previewDebounceTimer = setTimeout(() => {
-        void refreshSubtitlePreview(state.lastPreviewRow);
+        void refreshSubtitlePreview(state.lastPreviewRow!);
     }, 320);
 }
-export async function refreshSubtitlePreview(row) {
+
+export async function refreshSubtitlePreview(row: OpenSubtitlesRow | null): Promise<void> {
     const { state } = UI;
     if (!state.fetchedId) {
         hideSubtitlePreview();
@@ -58,45 +67,40 @@ export async function refreshSubtitlePreview(row) {
     if (url && /^https?:\/\//i.test(url)) {
         UI.el.subtitlePreviewBg.src = posterProxySrc(UI.api, url);
         UI.el.subtitlePreviewBg.hidden = false;
-    }
-    else {
+    } else {
         UI.el.subtitlePreviewBg.removeAttribute('src');
         UI.el.subtitlePreviewBg.hidden = true;
     }
     state.previewRequestSeq += 1;
     const seq = state.previewRequestSeq;
-    if (state.previewAbort)
-        state.previewAbort.abort();
+    if (state.previewAbort) state.previewAbort.abort();
     state.previewAbort = new AbortController();
     try {
-        const prev = await fetch(`${UI.api}/api/opensubtitles/fetched/${encodeURIComponent(state.fetchedId)}/preview`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                sourceLanguage: UI.el.sourceLanguage.value,
-                targetLanguage: UI.el.targetLanguage.value,
-                dualLanguage: UI.el.dualLanguage.checked,
-                wantsTranslate: wantsTranslate(),
-            }),
-            signal: state.previewAbort.signal,
-        });
-        if (seq !== state.previewRequestSeq)
-            return;
-        const data = (await prev.json().catch(() => ({})));
-        if (!prev.ok)
-            throw new Error(data.error || 'Preview failed');
+        const prev = await fetch(
+            `${UI.api}/api/opensubtitles/fetched/${encodeURIComponent(state.fetchedId)}/preview`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sourceLanguage: UI.el.sourceLanguage.value,
+                    targetLanguage: UI.el.targetLanguage.value,
+                    dualLanguage: UI.el.dualLanguage.checked,
+                    wantsTranslate: wantsTranslate(),
+                }),
+                signal: state.previewAbort.signal,
+            },
+        );
+        if (seq !== state.previewRequestSeq) return;
+        const data = (await prev.json().catch(() => ({}))) as PreviewApiResponse;
+        if (!prev.ok) throw new Error(data.error || 'Preview failed');
         applyPreviewPayload(data);
         UI.el.subtitlePreviewPanel.hidden = false;
-    }
-    catch (e) {
-        if (e instanceof Error && e.name === 'AbortError')
-            return;
-        if (seq !== state.previewRequestSeq)
-            return;
+    } catch (e: unknown) {
+        if (e instanceof Error && e.name === 'AbortError') return;
+        if (seq !== state.previewRequestSeq) return;
         UI.el.subtitlePreviewOrig.textContent = state.fetchedLabel || 'Subtitle ready';
         UI.el.subtitlePreviewTrans.hidden = true;
         UI.el.subtitlePreviewPinyin.hidden = true;
         UI.el.subtitlePreviewPanel.hidden = false;
     }
 }
-//# sourceMappingURL=subtitle-preview.js.map

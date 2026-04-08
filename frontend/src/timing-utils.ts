@@ -1,11 +1,12 @@
-export function formatDurationMmSs(totalSec) {
+export function formatDurationMmSs(totalSec: number): string {
     const s = Math.max(0, Math.floor(totalSec));
     const m = Math.floor(s / 60);
     const r = s % 60;
     return `${m}:${String(r).padStart(2, '0')}`;
 }
+
 /** Elapsed wall time + ETA from linear extrapolation of percent complete. */
-export function buildTranslationTimingText(elapsedSec, progress) {
+export function buildTranslationTimingText(elapsedSec: number, progress: number): string {
     const elapsedStr = formatDurationMmSs(elapsedSec);
     if (progress >= 100) {
         return `Finished in ${elapsedStr}`;
@@ -26,4 +27,3 @@ export function buildTranslationTimingText(elapsedSec, progress) {
     }
     return `${text} · ~${formatDurationMmSs(etaSec)} left`;
 }
-//# sourceMappingURL=timing-utils.js.map

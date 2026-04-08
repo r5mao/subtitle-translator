@@ -1,15 +1,17 @@
 import { attrEscapeUrl, esc } from './string-utils.js';
-export function languageCounts(rows) {
-    const m = new Map();
+import type { OpenSubtitlesRow, OpenSubtitlesSuggestion } from './types/opensubtitles.js';
+
+export function languageCounts(rows: OpenSubtitlesRow[]): Map<string, number> {
+    const m = new Map<string, number>();
     for (const r of rows) {
         const k = r.language || '?';
         m.set(k, (m.get(k) || 0) + 1);
     }
     return m;
 }
-export function displayLanguageLabel(code, rows) {
-    if (!code || code === '?')
-        return code;
+
+export function displayLanguageLabel(code: string, rows: OpenSubtitlesRow[]): string {
+    if (!code || code === '?') return code;
     for (const r of rows) {
         if ((r.language || '') === code && r.languageName) {
             return r.languageName;
@@ -17,8 +19,9 @@ export function displayLanguageLabel(code, rows) {
     }
     return code;
 }
+
 /** Map OpenSubtitles subtitle language code to #sourceLanguage option value. */
-export const OS_LANG_TO_UI_SOURCE = {
+export const OS_LANG_TO_UI_SOURCE: Record<string, string> = {
     en: 'en',
     es: 'es',
     fr: 'fr',
@@ -45,19 +48,19 @@ export const OS_LANG_TO_UI_SOURCE = {
     tr: 'tr',
     he: 'he',
 };
-export function opensubtitlesLangToUiSource(code) {
-    if (!code || typeof code !== 'string')
-        return null;
+
+export function opensubtitlesLangToUiSource(code: unknown): string | null {
+    if (!code || typeof code !== 'string') return null;
     const c = code.trim().toLowerCase();
     if (Object.prototype.hasOwnProperty.call(OS_LANG_TO_UI_SOURCE, c)) {
-        return OS_LANG_TO_UI_SOURCE[c];
+        return OS_LANG_TO_UI_SOURCE[c]!;
     }
-    if (c.startsWith('pt'))
-        return 'pt';
+    if (c.startsWith('pt')) return 'pt';
     return null;
 }
-export function rowInfo(r) {
-    const parts = [];
+
+export function rowInfo(r: OpenSubtitlesRow): string {
+    const parts: string[] = [];
     const dl = r.downloads;
     if (typeof dl === 'number' && Number.isFinite(dl) && dl >= 0) {
         parts.push(`${dl} dl`);
@@ -66,63 +69,59 @@ export function rowInfo(r) {
     if (typeof fps === 'number' && Number.isFinite(fps) && fps > 0) {
         parts.push(`${fps} fps`);
     }
-    if (r.hearingImpaired)
-        parts.push('HI');
-    if (r.machineTranslated)
-        parts.push('MT');
+    if (r.hearingImpaired) parts.push('HI');
+    if (r.machineTranslated) parts.push('MT');
     return parts.length ? parts.join(' · ') : '—';
 }
-export function titleCell(r) {
+
+export function titleCell(r: OpenSubtitlesRow): string {
     let t = r.title || '';
-    if (r.year)
-        t += ` (${r.year})`;
+    if (r.year) t += ` (${r.year})`;
     if (r.season != null && r.episode != null) {
         t += ` S${r.season}E${r.episode}`;
     }
     let html = t ? esc(t) : '';
-    if (r.release)
-        html += `<div class="cell-muted">${esc(r.release)}</div>`;
-    if (r.fileName)
-        html += `<div class="cell-muted">${esc(r.fileName)}</div>`;
+    if (r.release) html += `<div class="cell-muted">${esc(r.release)}</div>`;
+    if (r.fileName) html += `<div class="cell-muted">${esc(r.fileName)}</div>`;
     return html || '—';
 }
-export function normalizeHttpUrl(raw) {
-    if (raw == null)
-        return '';
+
+export function normalizeHttpUrl(raw: unknown): string {
+    if (raw == null) return '';
     let s = String(raw).trim();
-    if (!s)
-        return '';
-    if (s.startsWith('//'))
-        s = `https:${s}`;
-    if (/^https?:\/\//i.test(s))
-        return s;
+    if (!s) return '';
+    if (s.startsWith('//')) s = `https:${s}`;
+    if (/^https?:\/\//i.test(s)) return s;
     /* Match server _maybe_absolutize_opensubtitles_image_url so relative poster paths still proxy. */
     if (s.startsWith('/') && !s.includes('/../')) {
         const low = s.toLowerCase().split('?', 1)[0];
-        if (/\.(jpe?g|png|webp|gif|jfif)$/i.test(low) ||
+        if (
+            /\.(jpe?g|png|webp|gif|jfif)$/i.test(low) ||
             low.includes('/pictures/') ||
             low.includes('/posters/') ||
             low.includes('/poster') ||
-            low.includes('/img/')) {
+            low.includes('/img/')
+        ) {
             return `https://www.opensubtitles.com${s}`;
         }
     }
     return '';
 }
+
 /** Same-origin proxy avoids CDN hotlink / referrer blocks on poster thumbnails. */
-export function posterProxySrc(api, remoteUrl) {
+export function posterProxySrc(api: string, remoteUrl: string): string {
     const base = (api || '').replace(/\/$/, '');
     const q = encodeURIComponent(remoteUrl);
     return `${base}/api/opensubtitles/poster-image?url=${q}`;
 }
+
 /**
  * Text to put in the search box after picking a suggestion (matches server clean_work_search_query).
  * API sends searchQuery; older servers may omit it — strip redundant "YEAR -" / "(YEAR)" from title.
  */
-export function suggestionSearchText(s) {
+export function suggestionSearchText(s: OpenSubtitlesSuggestion): string {
     const fromApi = s && s.searchQuery != null ? String(s.searchQuery).trim() : '';
-    if (fromApi)
-        return fromApi;
+    if (fromApi) return fromApi;
     let t = String((s && s.title) || '').trim();
     const y = s && s.year;
     if (y != null && y !== '') {
@@ -134,10 +133,10 @@ export function suggestionSearchText(s) {
     }
     return t.replace(/\s+/g, ' ').trim() || String((s && s.title) || '').trim();
 }
-export function bindOsPosterImgOnError(img, placeholderClass) {
-    if (!img || img.tagName !== 'IMG')
-        return;
-    const imageEl = img;
+
+export function bindOsPosterImgOnError(img: Element | null, placeholderClass: string): void {
+    if (!img || img.tagName !== 'IMG') return;
+    const imageEl = img as HTMLImageElement;
     imageEl.addEventListener('error', function handleOsPosterImgError() {
         imageEl.removeEventListener('error', handleOsPosterImgError);
         const ph = document.createElement('span');
@@ -146,7 +145,8 @@ export function bindOsPosterImgOnError(img, placeholderClass) {
         imageEl.replaceWith(ph);
     });
 }
-export function titleCellWithPoster(api, r) {
+
+export function titleCellWithPoster(api: string, r: OpenSubtitlesRow): string {
     const url = normalizeHttpUrl(r.posterUrl);
     const useProxy = url && /^https?:\/\//i.test(url);
     const src = useProxy ? posterProxySrc(api, url) : '';
@@ -155,4 +155,3 @@ export function titleCellWithPoster(api, r) {
         : '<span class="os-poster-placeholder" aria-hidden="true"></span>';
     return `<div class="os-title-cell">${posterHtml}<div class="os-title-cell-text">${titleCell(r)}</div></div>`;
 }
-//# sourceMappingURL=opensubtitles-format.js.map

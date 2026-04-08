@@ -1,9 +1,23 @@
 import { UI } from './app-ui.js';
-import { bindOsPosterImgOnError, displayLanguageLabel, languageCounts, rowInfo, titleCellWithPoster, } from './opensubtitles-format.js';
+import {
+    bindOsPosterImgOnError,
+    displayLanguageLabel,
+    languageCounts,
+    rowInfo,
+    titleCellWithPoster,
+} from './opensubtitles-format.js';
 import { esc } from './string-utils.js';
 import { applySourceFromOpenSubtitlesRow, validateLanguages } from './language-and-source-ui.js';
 import { hideSubtitlePreview, refreshSubtitlePreview } from './subtitle-preview.js';
-export function clearOpenSubtitlesSelection() {
+import type { OpenSubtitlesRow } from './types/opensubtitles.js';
+
+interface FetchSubtitleResponse {
+    error?: string;
+    fetchedId?: string;
+    filename?: string;
+}
+
+export function clearOpenSubtitlesSelection(): void {
     const { state } = UI;
     state.fetchedId = null;
     state.fetchedLabel = '';
@@ -13,7 +27,8 @@ export function clearOpenSubtitlesSelection() {
     hideSubtitlePreview();
     validateLanguages();
 }
-export function releaseFetchedAfterTranslate() {
+
+export function releaseFetchedAfterTranslate(): void {
     const { state } = UI;
     state.fetchedId = null;
     state.fetchedLabel = '';
@@ -22,7 +37,8 @@ export function releaseFetchedAfterTranslate() {
     validateLanguages();
     filterAndRenderResults();
 }
-export function renderLangChips(rows) {
+
+export function renderLangChips(rows: OpenSubtitlesRow[]): void {
     const { state } = UI;
     const counts = languageCounts(rows);
     const keys = Array.from(counts.keys()).sort();
@@ -33,7 +49,7 @@ export function renderLangChips(rows) {
     }
     UI.el.osLangChips.hidden = false;
     UI.el.osLangChips.innerHTML = '';
-    const addChip = (code, label, count) => {
+    const addChip = (code: string, label: string, count: number | null): void => {
         const b = document.createElement('button');
         b.type = 'button';
         b.className = 'lang-chip' + (state.activeLangFilter === code ? ' active' : '');
@@ -47,10 +63,11 @@ export function renderLangChips(rows) {
     };
     addChip('all', 'All languages', rows.length);
     for (const k of keys) {
-        addChip(k, displayLanguageLabel(k, rows), counts.get(k));
+        addChip(k, displayLanguageLabel(k, rows), counts.get(k)!);
     }
 }
-export function filterAndRenderResults() {
+
+export function filterAndRenderResults(): void {
     const { state } = UI;
     UI.el.osResultsBody.innerHTML = '';
     let rows = state.rawSearchResults;
@@ -72,19 +89,23 @@ export function filterAndRenderResults() {
         const fid = String(r.fileId);
         const tr = document.createElement('tr');
         tr.classList.add('os-result-row');
-        const isSelected = Boolean(state.fetchedId && state.selectedOsFileId != null && String(state.selectedOsFileId) === fid);
-        const isFetching = state.fetchInProgressFileId != null && String(state.fetchInProgressFileId) === fid;
-        if (isSelected)
-            tr.classList.add('os-row-selected');
-        if (isFetching)
-            tr.classList.add('os-row-fetching');
+        const isSelected = Boolean(
+            state.fetchedId && state.selectedOsFileId != null && String(state.selectedOsFileId) === fid,
+        );
+        const isFetching =
+            state.fetchInProgressFileId != null && String(state.fetchInProgressFileId) === fid;
+        if (isSelected) tr.classList.add('os-row-selected');
+        if (isFetching) tr.classList.add('os-row-fetching');
         tr.tabIndex = 0;
         const rowLabel = r.title || r.fileName || r.release || fid;
-        tr.setAttribute('aria-label', isFetching
-            ? `Loading subtitle: ${rowLabel}`
-            : isSelected
-                ? `Selected: ${rowLabel}. Activate to clear selection.`
-                : `Select subtitle: ${rowLabel}`);
+        tr.setAttribute(
+            'aria-label',
+            isFetching
+                ? `Loading subtitle: ${rowLabel}`
+                : isSelected
+                  ? `Selected: ${rowLabel}. Activate to clear selection.`
+                  : `Select subtitle: ${rowLabel}`,
+        );
         tr.innerHTML = `
             <td>${titleCellWithPoster(UI.api, r)}</td>
             <td>${esc(r.languageName || r.language || '')}</td>
@@ -101,7 +122,8 @@ export function filterAndRenderResults() {
         UI.el.osResultsBody.appendChild(tr);
     }
 }
-export async function selectSubtitleFile(fileId, row) {
+
+export async function selectSubtitleFile(fileId: string | number, row: OpenSubtitlesRow): Promise<void> {
     const { state } = UI;
     const fid = String(fileId);
     if (state.fetchedId && state.selectedOsFileId != null && String(state.selectedOsFileId) === fid) {
@@ -121,7 +143,7 @@ export async function selectSubtitleFile(fileId, row) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ file_id: fileId }),
         });
-        const data = (await resp.json().catch(() => ({})));
+        const data = (await resp.json().catch(() => ({}))) as FetchSubtitleResponse;
         if (!resp.ok) {
             throw new Error(data.error || resp.statusText || 'Fetch failed');
         }
@@ -132,8 +154,7 @@ export async function selectSubtitleFile(fileId, row) {
         UI.el.osSearchStatus.textContent = '';
         state.lastPreviewRow = row;
         void refreshSubtitlePreview(row);
-    }
-    catch (e) {
+    } catch (e: unknown) {
         console.error(e);
         const msg = e instanceof Error ? e.message : String(e);
         UI.el.osSearchStatus.textContent = msg;
@@ -141,10 +162,8 @@ export async function selectSubtitleFile(fileId, row) {
         state.fetchedId = null;
         state.fetchedLabel = '';
         validateLanguages();
-    }
-    finally {
+    } finally {
         state.fetchInProgressFileId = null;
         filterAndRenderResults();
     }
 }
-//# sourceMappingURL=opensubtitles-results-table.js.map

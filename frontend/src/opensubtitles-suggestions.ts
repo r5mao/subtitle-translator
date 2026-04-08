@@ -1,17 +1,30 @@
 import { UI } from './app-ui.js';
 import { attrEscapeUrl, esc } from './string-utils.js';
-import { bindOsPosterImgOnError, normalizeHttpUrl, posterProxySrc, suggestionSearchText, } from './opensubtitles-format.js';
+import {
+    bindOsPosterImgOnError,
+    normalizeHttpUrl,
+    posterProxySrc,
+    suggestionSearchText,
+} from './opensubtitles-format.js';
+import type { OpenSubtitlesSuggestion, RunOpenSubtitlesSearchOptions } from './types/opensubtitles.js';
+
 const OS_SUGGEST_DEBOUNCE_MS = 300;
 const OS_SUGGEST_MIN_LEN = 2;
+
+type RunSearchFn = (options?: RunOpenSubtitlesSearchOptions) => void | Promise<void>;
+
 /** Set from main after opensubtitles-search loads (avoids circular import). */
-let runOpenSubtitlesSearch = async () => { };
-export function setRunOpenSubtitlesSearch(fn) {
+let runOpenSubtitlesSearch: RunSearchFn = async () => {};
+
+export function setRunOpenSubtitlesSearch(fn: RunSearchFn): void {
     runOpenSubtitlesSearch = fn;
 }
-function isSearchMode() {
+
+function isSearchMode(): boolean {
     return UI.el.sourceSearch.checked;
 }
-export function hideOpenSubtitlesSuggestions() {
+
+export function hideOpenSubtitlesSuggestions(): void {
     const { state } = UI;
     if (state.suggestDebounceTimer) {
         clearTimeout(state.suggestDebounceTimer);
@@ -28,24 +41,24 @@ export function hideOpenSubtitlesSuggestions() {
     UI.el.osQuery.setAttribute('aria-expanded', 'false');
     UI.el.osQuery.removeAttribute('aria-activedescendant');
 }
-export function updateOpenSubtitlesSuggestionActiveClasses() {
+
+export function updateOpenSubtitlesSuggestionActiveClasses(): void {
     const { state } = UI;
     const items = UI.el.osSuggestionsList.querySelectorAll('.os-suggestion-item');
     items.forEach((el, i) => {
         const on = i === state.activeSuggestionIndex;
         el.classList.toggle('os-suggestion-item-active', on);
         el.setAttribute('aria-selected', on ? 'true' : 'false');
-        if (on)
-            el.scrollIntoView({ block: 'nearest' });
+        if (on) el.scrollIntoView({ block: 'nearest' });
     });
     if (state.activeSuggestionIndex >= 0) {
         UI.el.osQuery.setAttribute('aria-activedescendant', `os-sugg-${state.activeSuggestionIndex}`);
-    }
-    else {
+    } else {
         UI.el.osQuery.removeAttribute('aria-activedescendant');
     }
 }
-export function renderOpenSubtitlesSuggestions(list) {
+
+export function renderOpenSubtitlesSuggestions(list: OpenSubtitlesSuggestion[]): void {
     const { state } = UI;
     state.suggestionRows = list;
     state.activeSuggestionIndex = -1;
@@ -56,7 +69,7 @@ export function renderOpenSubtitlesSuggestions(list) {
         return;
     }
     for (let i = 0; i < list.length; i += 1) {
-        const s = list[i];
+        const s = list[i]!;
         const li = document.createElement('li');
         li.id = `os-sugg-${i}`;
         li.setAttribute('role', 'option');
@@ -70,23 +83,27 @@ export function renderOpenSubtitlesSuggestions(list) {
             : '<span class="os-suggestion-poster os-suggestion-poster-placeholder" aria-hidden="true"></span>';
         const yearStr = s.year != null && s.year !== '' ? String(s.year) : '—';
         let meta = yearStr;
-        if (s.season != null && s.episode != null)
-            meta += ` · S${s.season}E${s.episode}`;
+        if (s.season != null && s.episode != null) meta += ` · S${s.season}E${s.episode}`;
         const head = suggestionSearchText(s);
         li.innerHTML = `<div class="os-suggestion-row">${posterHtml}<div class="os-suggestion-text"><span class="os-suggestion-title">${esc(head)}</span><span class="os-suggestion-meta">${esc(meta)}</span></div></div>`;
         li.addEventListener('mousedown', (e) => e.preventDefault());
         li.addEventListener('click', () => applyOpenSubtitlesSuggestion(s));
         UI.el.osSuggestionsList.appendChild(li);
-        bindOsPosterImgOnError(li.querySelector('img.os-suggestion-poster'), 'os-suggestion-poster os-suggestion-poster-placeholder');
+        bindOsPosterImgOnError(
+            li.querySelector('img.os-suggestion-poster'),
+            'os-suggestion-poster os-suggestion-poster-placeholder',
+        );
     }
     UI.el.osSuggestionsPanel.hidden = false;
     UI.el.osQuery.setAttribute('aria-expanded', 'true');
 }
-export function applyOpenSubtitlesSuggestion(s) {
+
+export function applyOpenSubtitlesSuggestion(s: OpenSubtitlesSuggestion): void {
     const { state } = UI;
     const label = suggestionSearchText(s);
     const y = s.year;
-    const yr = y != null && y !== '' && Number.isFinite(Number(y)) ? Math.trunc(Number(y)) : null;
+    const yr =
+        y != null && y !== '' && Number.isFinite(Number(y)) ? Math.trunc(Number(y)) : null;
     state.osSearchRefine = {
         year: yr != null && yr >= 1870 && yr <= 2100 ? yr : null,
         imdbId: s.imdbId && String(s.imdbId).trim() ? String(s.imdbId).trim() : null,
@@ -96,16 +113,22 @@ export function applyOpenSubtitlesSuggestion(s) {
     UI.el.osSuggestLive.textContent = `Selected ${label}`;
     void runOpenSubtitlesSearch({ refreshFromInput: true, resetPage: true, keepRefine: true });
 }
-export function scheduleFetchOpenSubtitlesSuggestions() {
+
+export function scheduleFetchOpenSubtitlesSuggestions(): void {
     const { state } = UI;
-    if (state.suggestDebounceTimer)
-        clearTimeout(state.suggestDebounceTimer);
+    if (state.suggestDebounceTimer) clearTimeout(state.suggestDebounceTimer);
     state.suggestDebounceTimer = setTimeout(() => {
         state.suggestDebounceTimer = null;
         void fetchOpenSubtitlesSuggestions();
     }, OS_SUGGEST_DEBOUNCE_MS);
 }
-export async function fetchOpenSubtitlesSuggestions() {
+
+interface SuggestionsApiResponse {
+    error?: string;
+    suggestions?: OpenSubtitlesSuggestion[];
+}
+
+export async function fetchOpenSubtitlesSuggestions(): Promise<void> {
     const { state } = UI;
     if (!isSearchMode() || !state.opensubtitlesConfigured) {
         hideOpenSubtitlesSuggestions();
@@ -116,8 +139,7 @@ export async function fetchOpenSubtitlesSuggestions() {
         hideOpenSubtitlesSuggestions();
         return;
     }
-    if (state.suggestAbort)
-        state.suggestAbort.abort();
+    if (state.suggestAbort) state.suggestAbort.abort();
     state.suggestAbort = new AbortController();
     const ac = state.suggestAbort;
     UI.el.osSuggestLive.textContent = 'Loading suggestions…';
@@ -128,9 +150,8 @@ export async function fetchOpenSubtitlesSuggestions() {
             body: JSON.stringify({ query: q }),
             signal: ac.signal,
         });
-        const data = (await resp.json().catch(() => ({})));
-        if (state.suggestAbort !== ac)
-            return;
+        const data = (await resp.json().catch(() => ({}))) as SuggestionsApiResponse;
+        if (state.suggestAbort !== ac) return;
         if (!resp.ok) {
             hideOpenSubtitlesSuggestions();
             UI.el.osSuggestLive.textContent = data.error || 'Suggestions failed';
@@ -140,15 +161,14 @@ export async function fetchOpenSubtitlesSuggestions() {
         UI.el.osSuggestLive.textContent =
             list.length === 0 ? 'No title suggestions' : `${list.length} suggestions`;
         renderOpenSubtitlesSuggestions(list);
-    }
-    catch (e) {
-        if (e instanceof Error && e.name === 'AbortError')
-            return;
+    } catch (e: unknown) {
+        if (e instanceof Error && e.name === 'AbortError') return;
         hideOpenSubtitlesSuggestions();
         UI.el.osSuggestLive.textContent = '';
     }
 }
-export function handleOsQueryKeydown(e) {
+
+export function handleOsQueryKeydown(e: KeyboardEvent): void {
     const { state } = UI;
     const panelOpen = !UI.el.osSuggestionsPanel.hidden && state.suggestionRows.length > 0;
     if (e.key === 'Escape') {
@@ -164,8 +184,7 @@ export function handleOsQueryKeydown(e) {
             e.preventDefault();
             if (state.activeSuggestionIndex < state.suggestionRows.length - 1) {
                 state.activeSuggestionIndex += 1;
-            }
-            else {
+            } else {
                 state.activeSuggestionIndex = 0;
             }
             updateOpenSubtitlesSuggestionActiveClasses();
@@ -177,8 +196,7 @@ export function handleOsQueryKeydown(e) {
             e.preventDefault();
             if (state.activeSuggestionIndex > 0) {
                 state.activeSuggestionIndex -= 1;
-            }
-            else {
+            } else {
                 state.activeSuggestionIndex = state.suggestionRows.length - 1;
             }
             updateOpenSubtitlesSuggestionActiveClasses();
@@ -188,11 +206,10 @@ export function handleOsQueryKeydown(e) {
     if (e.key === 'Enter') {
         if (panelOpen && state.activeSuggestionIndex >= 0) {
             e.preventDefault();
-            applyOpenSubtitlesSuggestion(state.suggestionRows[state.activeSuggestionIndex]);
+            applyOpenSubtitlesSuggestion(state.suggestionRows[state.activeSuggestionIndex]!);
             return;
         }
         e.preventDefault();
         void runOpenSubtitlesSearch({ refreshFromInput: true, resetPage: true });
     }
 }
-//# sourceMappingURL=opensubtitles-suggestions.js.map
