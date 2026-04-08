@@ -150,7 +150,9 @@ def test_tmdb_poster_api_and_cdn_url_construction(monkeypatch):
     assert "api_key=k" in seen[0]
     assert "/images" not in seen[0]
     assert rows[0]["posterUrl"] == "https://image.tmdb.org/t/p/w185/movie/poster1.jpg"
-    assert rows[0]["backdropUrl"] == "https://image.tmdb.org/t/p/w780/movie/backdrop1.jpg"
+    assert (
+        rows[0]["backdropUrl"] == "https://image.tmdb.org/t/p/w780/movie/backdrop1.jpg"
+    )
 
 
 def test_flatten_tmdb_overrides_opensubtitles_title_and_year(monkeypatch):
@@ -214,7 +216,11 @@ def test_flatten_poster_from_included_movie_resource():
                 "attributes": {
                     "language": "en",
                     "files": [{"file_id": 1, "file_name": "ep.srt"}],
-                    "feature_details": {"movie_name": "Some Show", "season_number": 1, "episode_number": 2},
+                    "feature_details": {
+                        "movie_name": "Some Show",
+                        "season_number": 1,
+                        "episode_number": 2,
+                    },
                 },
             }
         ],

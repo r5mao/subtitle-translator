@@ -1,4 +1,5 @@
 """Unit tests for TranslationService.translate_texts (real async body, fake translator)."""
+
 import asyncio
 import types
 
@@ -44,7 +45,9 @@ class FakeTranslatorNoCall:
 
     async def translate(self, to_translate, dest=None, src=None):
         self.calls.append(to_translate)
-        raise AssertionError("translate should not be called when there is nothing to translate")
+        raise AssertionError(
+            "translate should not be called when there is nothing to translate"
+        )
 
 
 def test_translate_texts_list_result():

@@ -1,6 +1,9 @@
-from srt_translator.services.opensubtitles_client import normalize_opensubtitles_imdb_id
+from tests.opensubtitles.support import (
+    FakeOpenSubtitlesClient,
+    FakeOpenSubtitlesManyPages,
+)
 
-from tests.opensubtitles.support import FakeOpenSubtitlesClient, FakeOpenSubtitlesManyPages
+from srt_translator.services.opensubtitles_client import normalize_opensubtitles_imdb_id
 
 
 class FakeRefineEmptyThenBroad(FakeOpenSubtitlesClient):
@@ -10,7 +13,17 @@ class FakeRefineEmptyThenBroad(FakeOpenSubtitlesClient):
         super().__init__()
         self._search_calls = 0
 
-    def search(self, query, languages="", page=1, per_page=10, *, year=None, imdb_id=None, **kwargs):
+    def search(
+        self,
+        query,
+        languages="",
+        page=1,
+        per_page=10,
+        *,
+        year=None,
+        imdb_id=None,
+        **kwargs,
+    ):
         self._search_calls += 1
         type(self).last_search = {
             "query": query,
@@ -97,7 +110,9 @@ def test_opensubtitles_search_caps_total_pages(client, os_env_configured, monkey
     assert resp.get_json()["totalPages"] == 10
 
 
-def test_opensubtitles_search_rejects_page_above_cap(client, os_env_configured, monkeypatch):
+def test_opensubtitles_search_rejects_page_above_cap(
+    client, os_env_configured, monkeypatch
+):
     monkeypatch.setattr(
         "srt_translator.api.opensubtitles_search_handlers.OpenSubtitlesClient",
         FakeOpenSubtitlesClient,
@@ -140,7 +155,9 @@ def test_normalize_opensubtitles_imdb_id():
     assert normalize_opensubtitles_imdb_id("bad") is None
 
 
-def test_opensubtitles_search_refine_fallback_when_refined_empty(client, os_env_configured, monkeypatch):
+def test_opensubtitles_search_refine_fallback_when_refined_empty(
+    client, os_env_configured, monkeypatch
+):
     monkeypatch.setattr(
         "srt_translator.api.opensubtitles_search_handlers.OpenSubtitlesClient",
         FakeRefineEmptyThenBroad,
@@ -166,7 +183,9 @@ def test_opensubtitles_search_refine_fallback_when_refined_empty(client, os_env_
     assert FakeRefineEmptyThenBroad.last_search["imdb_id"] is None
 
 
-def test_opensubtitles_search_passes_year_and_imdb_to_client(client, os_env_configured, monkeypatch):
+def test_opensubtitles_search_passes_year_and_imdb_to_client(
+    client, os_env_configured, monkeypatch
+):
     monkeypatch.setattr(
         "srt_translator.api.opensubtitles_search_handlers.OpenSubtitlesClient",
         FakeOpenSubtitlesClient,
@@ -190,7 +209,9 @@ def test_opensubtitles_search_passes_year_and_imdb_to_client(client, os_env_conf
     assert FakeOpenSubtitlesClient.last_search["imdb_id"] == "0133093"
 
 
-def test_opensubtitles_search_ignores_out_of_range_year(client, os_env_configured, monkeypatch):
+def test_opensubtitles_search_ignores_out_of_range_year(
+    client, os_env_configured, monkeypatch
+):
     monkeypatch.setattr(
         "srt_translator.api.opensubtitles_search_handlers.OpenSubtitlesClient",
         FakeOpenSubtitlesClient,

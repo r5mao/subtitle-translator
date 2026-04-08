@@ -1,4 +1,5 @@
 """First-cue subtitle preview JSON for UI (original + optional translation + pinyin)."""
+
 from __future__ import annotations
 
 import asyncio

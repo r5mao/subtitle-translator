@@ -1,6 +1,8 @@
 import pytest
 
-from srt_translator.services.opensubtitles_client import reset_subtitle_language_names_cache
+from srt_translator.services.opensubtitles_client import (
+    reset_subtitle_language_names_cache,
+)
 
 
 @pytest.fixture(autouse=True)

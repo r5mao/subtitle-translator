@@ -1,11 +1,11 @@
 """SRT Translator package."""
 
-from flask import Flask, send_from_directory
-from flask_cors import CORS
 import os
 from pathlib import Path
 
 from dotenv import load_dotenv
+from flask import Flask, send_from_directory
+from flask_cors import CORS
 
 from .api import api_bp
 
@@ -18,34 +18,33 @@ def create_app():
     # Load .env from project root so OPENSUBTITLES_* etc. work regardless of shell cwd
     load_dotenv(_PROJECT_ROOT / ".env")
 
-    app = Flask(__name__, 
-               static_folder=os.path.abspath('static'),
-               template_folder=os.path.abspath('.'))
-    
+    app = Flask(
+        __name__,
+        static_folder=os.path.abspath("static"),
+        template_folder=os.path.abspath("."),
+    )
+
     # Load configuration
-    app.config.from_object('srt_translator.config.Config')
-    
-    # Initialize extensions
-    from .services import translation
+    app.config.from_object("srt_translator.config.Config")
 
     # Allow localhost:8080 to talk to localhost:5000 for development
     CORS(app)
 
     # Register blueprints
-    app.register_blueprint(api_bp, url_prefix='/api')
-    
+    app.register_blueprint(api_bp, url_prefix="/api")
+
     # Serve index.html for the root URL
-    @app.route('/')
+    @app.route("/")
     def index():
-        return send_from_directory(os.path.abspath('.'), 'index.html')
-    
+        return send_from_directory(os.path.abspath("."), "index.html")
+
     # Add favicon route
-    @app.route('/favicon.ico')
+    @app.route("/favicon.ico")
     def favicon():
         return send_from_directory(
-            os.path.abspath('static'),
-            'favicon.ico',
-            mimetype='image/vnd.microsoft.icon'
+            os.path.abspath("static"),
+            "favicon.ico",
+            mimetype="image/vnd.microsoft.icon",
         )
-    
+
     return app

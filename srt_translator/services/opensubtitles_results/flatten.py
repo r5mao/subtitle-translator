@@ -1,7 +1,10 @@
 """Flatten OpenSubtitles list JSON into per-file UI rows and read pagination meta."""
+
 from __future__ import annotations
 
 from typing import Any, Optional
+
+from srt_translator.services.tmdb_poster import TmdbBundle
 
 from .feature_display import (
     pick_display_year,
@@ -10,8 +13,6 @@ from .feature_display import (
     title_hint_from_sub_filename,
     title_is_placeholder,
 )
-from srt_translator.services.tmdb_poster import TmdbBundle
-
 from .media_poster import included_resource_index, resolve_poster_and_backdrop
 
 
@@ -99,7 +100,9 @@ def flatten_subtitle_results(
                 files = [
                     {
                         "file_id": fid,
-                        "file_name": attr.get("file_name") or release or f"{_stub}.{language}.srt",
+                        "file_name": attr.get("file_name")
+                        or release
+                        or f"{_stub}.{language}.srt",
                     }
                 ]
             else:
@@ -126,7 +129,11 @@ def flatten_subtitle_results(
                     language_names.get(lc)
                     or language_names.get(lc.lower())
                     or next(
-                        (language_names[k] for k in language_names if k.lower() == lc.lower()),
+                        (
+                            language_names[k]
+                            for k in language_names
+                            if k.lower() == lc.lower()
+                        ),
                         lc,
                     )
                 )
@@ -143,7 +150,9 @@ def flatten_subtitle_results(
             if tmdb_title:
                 row_title = tmdb_title
             fn_s = str(file_name)
-            display_year = pick_display_year(feat, year, fn_s, rel_s, display_title=row_title)
+            display_year = pick_display_year(
+                feat, year, fn_s, rel_s, display_title=row_title
+            )
             if tmdb_year is not None:
                 display_year = tmdb_year
             rows.append(

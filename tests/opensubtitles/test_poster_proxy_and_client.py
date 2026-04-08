@@ -1,6 +1,6 @@
 import urllib.parse
-
 import urllib.request
+from typing import ClassVar, Dict
 
 from srt_translator.services.opensubtitles_client import (
     OpenSubtitlesClient,
@@ -24,7 +24,7 @@ def test_poster_image_requires_url(client):
 
 def test_poster_image_proxies_allowed_host(client, monkeypatch):
     class FakeResp:
-        headers = {"Content-Type": "image/jpeg"}
+        headers: ClassVar[Dict[str, str]] = {"Content-Type": "image/jpeg"}
 
         def read(self, n=65536):
             if getattr(self, "_done", False):
@@ -53,7 +53,7 @@ def test_poster_image_proxies_allowed_host(client, monkeypatch):
 
 def test_poster_image_allows_amazon_imdb_style_host(client, monkeypatch):
     class FakeResp:
-        headers = {"Content-Type": "image/jpeg"}
+        headers: ClassVar[Dict[str, str]] = {"Content-Type": "image/jpeg"}
 
         def read(self, n=65536):
             if getattr(self, "_done", False):
@@ -84,8 +84,14 @@ def test_maybe_absolutize_opensubtitles_poster_paths():
         _maybe_absolutize_opensubtitles_image_url("/pictures/posters/x.jpg")
         == "https://www.opensubtitles.com/pictures/posters/x.jpg"
     )
-    assert _maybe_absolutize_opensubtitles_image_url("//img.example/a.png") == "https://img.example/a.png"
-    assert _maybe_absolutize_opensubtitles_image_url("https://cdn.example/z.webp") == "https://cdn.example/z.webp"
+    assert (
+        _maybe_absolutize_opensubtitles_image_url("//img.example/a.png")
+        == "https://img.example/a.png"
+    )
+    assert (
+        _maybe_absolutize_opensubtitles_image_url("https://cdn.example/z.webp")
+        == "https://cdn.example/z.webp"
+    )
     assert _maybe_absolutize_opensubtitles_image_url("/pictures/../evil.jpg") is None
 
 
@@ -102,7 +108,7 @@ def test_poster_image_proxy_query_url_construction_roundtrip():
 
 def test_poster_image_allows_cloudfront(client, monkeypatch):
     class FakeResp:
-        headers = {"Content-Type": "image/jpeg"}
+        headers: ClassVar[Dict[str, str]] = {"Content-Type": "image/jpeg"}
 
         def read(self, n=65536):
             if getattr(self, "_done", False):
@@ -122,7 +128,9 @@ def test_poster_image_allows_cloudfront(client, monkeypatch):
         5,
     )
 
-    u = urllib.parse.quote("https://d111111abcdef8.cloudfront.net/out/poster.jpg", safe="")
+    u = urllib.parse.quote(
+        "https://d111111abcdef8.cloudfront.net/out/poster.jpg", safe=""
+    )
     resp = client.get(f"/api/opensubtitles/poster-image?url={u}")
     assert resp.status_code == 200
     assert resp.data.startswith(b"\xff\xd8\xff")
@@ -131,7 +139,9 @@ def test_poster_image_allows_cloudfront(client, monkeypatch):
 def test_subtitles_search_retries_without_include_on_400(monkeypatch):
     calls: list[tuple] = []
 
-    def fake_request(self, method, path, *, query=None, json_body=None, retry_login=True):
+    def fake_request(
+        self, method, path, *, query=None, json_body=None, retry_login=True
+    ):
         calls.append((method, path, dict(query or {})))
         if len(calls) == 1:
             raise OpenSubtitlesError("OpenSubtitles request failed (400): bad request")

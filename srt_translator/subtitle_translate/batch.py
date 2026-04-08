@@ -1,4 +1,5 @@
 """Batch machine translation over plain text lines."""
+
 from __future__ import annotations
 
 from googletrans import Translator

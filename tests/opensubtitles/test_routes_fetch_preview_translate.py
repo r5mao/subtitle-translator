@@ -1,15 +1,15 @@
+import contextlib
 import gc
 import os
 import tempfile
 import uuid
-
-from tests.test_translate_and_download import make_srt
 
 from tests.opensubtitles.support import (
     FakeMultiFilePerSubtitle,
     FakeOpenSubtitlesClient,
     FakeSuggestionsDupFeature,
 )
+from tests.test_translate_and_download import make_srt
 
 
 def test_opensubtitles_suggestions_ok(client, os_env_configured, monkeypatch):
@@ -25,7 +25,9 @@ def test_opensubtitles_suggestions_ok(client, os_env_configured, monkeypatch):
     assert FakeSuggestionsDupFeature.last_search["per_page"] == 50
 
 
-def test_opensubtitles_suggestions_rejects_short_query(client, os_env_configured, monkeypatch):
+def test_opensubtitles_suggestions_rejects_short_query(
+    client, os_env_configured, monkeypatch
+):
     monkeypatch.setattr(
         "srt_translator.api.opensubtitles_search_handlers.OpenSubtitlesClient",
         FakeOpenSubtitlesClient,
@@ -81,7 +83,9 @@ def test_opensubtitles_fetch_stores_temp_file(client, os_env_configured, monkeyp
     os.remove(path)
 
 
-def test_opensubtitles_fetched_download_streams_file(client, os_env_configured, monkeypatch):
+def test_opensubtitles_fetched_download_streams_file(
+    client, os_env_configured, monkeypatch
+):
     monkeypatch.setattr(
         "srt_translator.api.opensubtitles_search_handlers.OpenSubtitlesClient",
         FakeOpenSubtitlesClient,
@@ -98,10 +102,8 @@ def test_opensubtitles_fetched_download_streams_file(client, os_env_configured, 
     assert len(matches) == 1
     del dl
     gc.collect()
-    try:
+    with contextlib.suppress(OSError):
         os.remove(os.path.join(temp_dir, matches[0]))
-    except OSError:
-        pass
 
 
 def test_opensubtitles_fetched_download_404_unknown_id(client):
@@ -136,7 +138,9 @@ def test_opensubtitles_fetched_preview_json(client, os_env_configured, monkeypat
             break
 
 
-def test_opensubtitles_fetched_preview_post_translated(client, os_env_configured, monkeypatch, patch_translator):
+def test_opensubtitles_fetched_preview_post_translated(
+    client, os_env_configured, monkeypatch, patch_translator
+):
     monkeypatch.setattr(
         "srt_translator.api.opensubtitles_search_handlers.OpenSubtitlesClient",
         FakeOpenSubtitlesClient,
@@ -166,7 +170,9 @@ def test_opensubtitles_fetched_preview_post_translated(client, os_env_configured
                 break
 
 
-def test_opensubtitles_fetched_preview_post_pinyin_target(client, os_env_configured, monkeypatch, patch_translator):
+def test_opensubtitles_fetched_preview_post_pinyin_target(
+    client, os_env_configured, monkeypatch, patch_translator
+):
     monkeypatch.setattr(
         "srt_translator.api.opensubtitles_search_handlers.OpenSubtitlesClient",
         FakeOpenSubtitlesClient,
@@ -220,7 +226,9 @@ def test_translate_with_fetched_id(client, patch_translator, monkeypatch):
         assert resp.status_code == 200
         j = resp.get_json()
         assert j["success"] is True
-        assert not os.path.exists(path), "fetched temp file should be removed after translate"
+        assert not os.path.exists(path), (
+            "fetched temp file should be removed after translate"
+        )
     finally:
         if os.path.exists(path):
             os.remove(path)

@@ -1,4 +1,5 @@
 """Same-origin proxy for poster/backdrop images (allowlisted hosts)."""
+
 from __future__ import annotations
 
 import logging
@@ -28,7 +29,9 @@ _POSTER_ALLOWED_HOST_SUFFIXES = frozenset(
 )
 _POSTER_MAX_BYTES = 2 * 1024 * 1024
 _POSTER_TIMEOUT_SEC = 15
-_DEFAULT_USER_AGENT = os.environ.get("OPENSUBTITLES_USER_AGENT", "SubtitleTranslatorApp 1.0")
+_DEFAULT_USER_AGENT = os.environ.get(
+    "OPENSUBTITLES_USER_AGENT", "SubtitleTranslatorApp 1.0"
+)
 
 
 def _poster_remote_host_allowed(host: str) -> bool:
@@ -63,7 +66,9 @@ def register_poster_proxy_route(api_bp) -> None:
         )
         try:
             with urllib.request.urlopen(req, timeout=_POSTER_TIMEOUT_SEC) as resp:
-                ctype = (resp.headers.get("Content-Type") or "image/jpeg").split(";")[0].strip() or "image/jpeg"
+                ctype = (resp.headers.get("Content-Type") or "image/jpeg").split(";")[
+                    0
+                ].strip() or "image/jpeg"
                 chunks: list[bytes] = []
                 total = 0
                 while True:

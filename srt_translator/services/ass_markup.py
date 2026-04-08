@@ -1,4 +1,5 @@
 """HTML inline styling to ASS override codes; plaintext extraction for translation."""
+
 from __future__ import annotations
 
 import re

@@ -1,9 +1,11 @@
 """Distinct work suggestions from OpenSubtitles search JSON."""
+
 from __future__ import annotations
 
 from typing import Any, Optional
 
 from srt_translator.services.opensubtitles_ids import normalize_opensubtitles_imdb_id
+from srt_translator.services.tmdb_poster import TmdbBundle
 
 from .feature_display import (
     clean_work_search_query,
@@ -14,8 +16,6 @@ from .feature_display import (
     title_hint_from_sub_filename,
     title_is_placeholder,
 )
-from srt_translator.services.tmdb_poster import TmdbBundle
-
 from .media_poster import included_resource_index, resolve_poster_and_backdrop
 
 
@@ -42,7 +42,9 @@ def _feature_dedupe_key(item: dict[str, Any]) -> str:
     feat = attr.get("feature_details") or {}
     if not isinstance(feat, dict):
         feat = {}
-    title = primary_title_from_feature(feat, attr) or str(attr.get("release") or "").strip()
+    title = (
+        primary_title_from_feature(feat, attr) or str(attr.get("release") or "").strip()
+    )
     year = feat.get("year")
     season = feat.get("season_number")
     episode = feat.get("episode_number")

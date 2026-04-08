@@ -1,4 +1,5 @@
 """ASS-style line snippets and collapse helpers for translated subtitle output."""
+
 from __future__ import annotations
 
 import re

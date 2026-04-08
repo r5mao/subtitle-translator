@@ -1,0 +1,2 @@
+# Dev-only: lint/format (see pyproject.toml [tool.ruff])
+ruff>=0.4,<1

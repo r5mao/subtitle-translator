@@ -1,4 +1,5 @@
 """Resolve OpenSubtitles fetched subtitle temp files on disk (shared by translate + download)."""
+
 import os
 import re
 import tempfile

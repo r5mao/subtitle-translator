@@ -12,7 +12,17 @@ class FakeOpenSubtitlesClient:
     def configured(self):
         return True
 
-    def search(self, query, languages="", page=1, per_page=10, *, year=None, imdb_id=None, **kwargs):
+    def search(
+        self,
+        query,
+        languages="",
+        page=1,
+        per_page=10,
+        *,
+        year=None,
+        imdb_id=None,
+        **kwargs,
+    ):
         assert query.strip()
         type(self).last_search = {
             "query": query,
@@ -50,7 +60,17 @@ class FakeOpenSubtitlesClient:
 class FakeOpenSubtitlesManyPages(FakeOpenSubtitlesClient):
     """Upstream reports more pages than we expose to the client."""
 
-    def search(self, query, languages="", page=1, per_page=10, *, year=None, imdb_id=None, **kwargs):
+    def search(
+        self,
+        query,
+        languages="",
+        page=1,
+        per_page=10,
+        *,
+        year=None,
+        imdb_id=None,
+        **kwargs,
+    ):
         out = super().search(
             query,
             languages=languages,
@@ -68,7 +88,17 @@ class FakeOpenSubtitlesManyPages(FakeOpenSubtitlesClient):
 class FakeSuggestionsDupFeature(FakeOpenSubtitlesClient):
     """Two subtitle rows share one feature id; third row is another feature."""
 
-    def search(self, query, languages="", page=1, per_page=10, *, year=None, imdb_id=None, **kwargs):
+    def search(
+        self,
+        query,
+        languages="",
+        page=1,
+        per_page=10,
+        *,
+        year=None,
+        imdb_id=None,
+        **kwargs,
+    ):
         assert query.strip()
         type(self).last_search = {
             "query": query,
@@ -82,7 +112,9 @@ class FakeSuggestionsDupFeature(FakeOpenSubtitlesClient):
             "data": [
                 {
                     "type": "subtitle",
-                    "relationships": {"feature": {"data": {"type": "feature", "id": "42"}}},
+                    "relationships": {
+                        "feature": {"data": {"type": "feature", "id": "42"}}
+                    },
                     "attributes": {
                         "language": "en",
                         "release": "R1",
@@ -93,7 +125,9 @@ class FakeSuggestionsDupFeature(FakeOpenSubtitlesClient):
                 },
                 {
                     "type": "subtitle",
-                    "relationships": {"feature": {"data": {"type": "feature", "id": "42"}}},
+                    "relationships": {
+                        "feature": {"data": {"type": "feature", "id": "42"}}
+                    },
                     "attributes": {
                         "language": "es",
                         "release": "R2",
@@ -103,7 +137,9 @@ class FakeSuggestionsDupFeature(FakeOpenSubtitlesClient):
                 },
                 {
                     "type": "subtitle",
-                    "relationships": {"feature": {"data": {"type": "feature", "id": "99"}}},
+                    "relationships": {
+                        "feature": {"data": {"type": "feature", "id": "99"}}
+                    },
                     "attributes": {
                         "language": "en",
                         "release": "R3",
@@ -118,7 +154,17 @@ class FakeSuggestionsDupFeature(FakeOpenSubtitlesClient):
 class FakeMultiFilePerSubtitle(FakeOpenSubtitlesClient):
     """Each API subtitle has multiple files; flatten yields more rows than per_page."""
 
-    def search(self, query, languages="", page=1, per_page=10, *, year=None, imdb_id=None, **kwargs):
+    def search(
+        self,
+        query,
+        languages="",
+        page=1,
+        per_page=10,
+        *,
+        year=None,
+        imdb_id=None,
+        **kwargs,
+    ):
         assert query.strip()
         type(self).last_search = {
             "query": query,
@@ -139,7 +185,10 @@ class FakeMultiFilePerSubtitle(FakeOpenSubtitlesClient):
                         "download_count": 1,
                         "fps": 23.976,
                         "files": [
-                            {"file_id": 880000 + i * 10 + j, "file_name": f"sub_{i}_{j}.srt"}
+                            {
+                                "file_id": 880000 + i * 10 + j,
+                                "file_name": f"sub_{i}_{j}.srt",
+                            }
                             for j in range(3)
                         ],
                         "feature_details": {

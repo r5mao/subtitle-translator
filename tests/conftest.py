@@ -1,4 +1,5 @@
 import pytest
+
 from srt_translator import create_app
 from srt_translator.services.translation import translation_service
 

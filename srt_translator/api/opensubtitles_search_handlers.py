@@ -1,4 +1,5 @@
 """OpenSubtitles search, fetch, download, preview API routes."""
+
 from __future__ import annotations
 
 import logging
@@ -58,7 +59,9 @@ def register_opensubtitles_search_routes(api_bp) -> None:
     def opensubtitles_search():
         c = OpenSubtitlesClient()
         if not c.configured():
-            return jsonify({"error": "OpenSubtitles is not configured on this server."}), 503
+            return jsonify(
+                {"error": "OpenSubtitles is not configured on this server."}
+            ), 503
         try:
             body = request.get_json(silent=True) or {}
             query = (body.get("query") or "").strip()
@@ -85,7 +88,9 @@ def register_opensubtitles_search_routes(api_bp) -> None:
                         year_val = yi
                 except (TypeError, ValueError):
                     pass
-            imdb_q = normalize_opensubtitles_imdb_id(body.get("imdbId") or body.get("imdb_id"))
+            imdb_q = normalize_opensubtitles_imdb_id(
+                body.get("imdbId") or body.get("imdb_id")
+            )
             lang_lookup = get_language_name_lookup(c)
             raw = c.search(
                 query,
@@ -97,11 +102,7 @@ def register_opensubtitles_search_routes(api_bp) -> None:
             )
             _api_data = raw.get("data")
             _refine_active = year_val is not None or bool(imdb_q)
-            if (
-                _refine_active
-                and isinstance(_api_data, list)
-                and len(_api_data) == 0
-            ):
+            if _refine_active and isinstance(_api_data, list) and len(_api_data) == 0:
                 raw = c.search(
                     query,
                     languages=os_langs,
@@ -141,13 +142,17 @@ def register_opensubtitles_search_routes(api_bp) -> None:
     def opensubtitles_suggestions():
         c = OpenSubtitlesClient()
         if not c.configured():
-            return jsonify({"error": "OpenSubtitles is not configured on this server."}), 503
+            return jsonify(
+                {"error": "OpenSubtitles is not configured on this server."}
+            ), 503
         try:
             body = request.get_json(silent=True) or {}
             query = (body.get("query") or "").strip()
             if len(query) < _SUGGEST_QUERY_MIN_LEN:
                 return jsonify(
-                    {"error": f"query must be at least {_SUGGEST_QUERY_MIN_LEN} characters"}
+                    {
+                        "error": f"query must be at least {_SUGGEST_QUERY_MIN_LEN} characters"
+                    }
                 ), 400
             if len(query) > _SUGGEST_QUERY_MAX_LEN:
                 return jsonify({"error": "query too long"}), 400
@@ -157,7 +162,9 @@ def register_opensubtitles_search_routes(api_bp) -> None:
                 page=1,
                 per_page=_SUGGESTIONS_FETCH_PER_PAGE,
             )
-            suggestions = distinct_work_suggestions_from_subtitles(raw, limit=_SUGGESTIONS_MAX)
+            suggestions = distinct_work_suggestions_from_subtitles(
+                raw, limit=_SUGGESTIONS_MAX
+            )
             suggestions = filter_work_suggestions_by_query(suggestions, query)
             return jsonify({"suggestions": suggestions})
         except OpenSubtitlesNotConfigured as e:
@@ -170,7 +177,9 @@ def register_opensubtitles_search_routes(api_bp) -> None:
     def opensubtitles_fetch():
         c = OpenSubtitlesClient()
         if not c.configured():
-            return jsonify({"error": "OpenSubtitles is not configured on this server."}), 503
+            return jsonify(
+                {"error": "OpenSubtitles is not configured on this server."}
+            ), 503
         body = request.get_json(silent=True) or {}
         file_id = str(body.get("file_id") or body.get("fileId") or "").strip()
         if not file_id:
@@ -210,7 +219,9 @@ def register_opensubtitles_search_routes(api_bp) -> None:
             logger.warning("Fetched download read error: %s", e)
             return jsonify({"error": "Could not read subtitle file"}), 500
 
-    @api_bp.route("/opensubtitles/fetched/<fetched_id>/preview", methods=["GET", "POST"])
+    @api_bp.route(
+        "/opensubtitles/fetched/<fetched_id>/preview", methods=["GET", "POST"]
+    )
     def opensubtitles_fetched_preview(fetched_id):
         if not is_valid_fetched_id(fetched_id):
             return jsonify({"error": "Invalid fetched subtitle id"}), 400

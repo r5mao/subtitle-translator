@@ -1,4 +1,5 @@
 """Poster and backdrop URLs from OpenSubtitles JSON:API payloads and TMDb fallback."""
+
 from __future__ import annotations
 
 import json
@@ -23,13 +24,21 @@ def _normalize_media_url(val: Any) -> Optional[str]:
 
 def _looks_like_image_url(url: str) -> bool:
     path = url.lower().split("?", 1)[0]
-    if any(path.endswith(ext) for ext in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".jfif")):
+    if any(
+        path.endswith(ext)
+        for ext in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".jfif")
+    ):
         return True
     if "osdb.link" in url.lower() and "feature" in url.lower():
         return True
     if "image.tmdb.org" in url.lower():
         return True
-    if "/pictures/" in path or "/posters/" in path or "/poster" in path or "/img/" in path:
+    if (
+        "/pictures/" in path
+        or "/posters/" in path
+        or "/poster" in path
+        or "/img/" in path
+    ):
         return True
     return False
 
@@ -50,7 +59,10 @@ def _maybe_absolutize_opensubtitles_image_url(u: Optional[str]) -> Optional[str]
     if s.startswith("/") and "/../" not in s:
         low = s.lower()
         if (
-            any(low.endswith(ext) for ext in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".jfif"))
+            any(
+                low.endswith(ext)
+                for ext in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".jfif")
+            )
             or "/pictures/" in low
             or "/posters/" in low
             or "/poster" in low
@@ -60,7 +72,9 @@ def _maybe_absolutize_opensubtitles_image_url(u: Optional[str]) -> Optional[str]
     return _normalize_media_url(s)
 
 
-def _deep_find_image_url_in_payload(attr: dict[str, Any], feat: dict[str, Any], max_depth: int = 7) -> Optional[str]:
+def _deep_find_image_url_in_payload(
+    attr: dict[str, Any], feat: dict[str, Any], max_depth: int = 7
+) -> Optional[str]:
     """Last-resort: scan nested JSON for strings that look like image URLs."""
 
     def walk(obj: Any, depth: int) -> Optional[str]:

@@ -1,11 +1,15 @@
 """Per-format translation: produce serialized subtitle text and output filename."""
+
 from __future__ import annotations
 
 import asyncio
 
 from googletrans import Translator
 
-from srt_translator.services.ass_markup import html_styling_tags_to_ass, plain_text_for_translation_ass
+from srt_translator.services.ass_markup import (
+    html_styling_tags_to_ass,
+    plain_text_for_translation_ass,
+)
 from srt_translator.services.pinyin_helper import line_to_pinyin
 from srt_translator.services.srt_entry import SRTEntry
 from srt_translator.services.subtitle_parser import SubtitleParser
@@ -52,24 +56,35 @@ def run_srt_translate(
             for entry, line_count in zip(entries, entry_line_counts):
                 lines = translated_lines[idx : idx + line_count]
                 translated_entries.append(
-                    SRTEntry(entry.sequence_number, entry.start_time, entry.end_time, lines)
+                    SRTEntry(
+                        entry.sequence_number, entry.start_time, entry.end_time, lines
+                    )
                 )
                 idx += line_count
                 update_progress(idx, len(all_lines))
         return translated_entries
 
     entries = [
-        SRTEntry(e["sequence_number"], e["start_time"], e["end_time"], e["text_lines"]) for e in parsed
+        SRTEntry(e["sequence_number"], e["start_time"], e["end_time"], e["text_lines"])
+        for e in parsed
     ]
-    translated_entries = asyncio.run(srt_progress_async(entries, source_lang, translate_dest))
+    translated_entries = asyncio.run(
+        srt_progress_async(entries, source_lang, translate_dest)
+    )
 
     if use_pinyin and dual_language:
         output_entries = []
         for orig_dict, trans_entry in zip(parsed, translated_entries):
             en = join_srt_text_lines(orig_dict["text_lines"])
             zh = join_srt_text_lines(trans_entry.text_lines)
-            pin = " ".join(line_to_pinyin(cl) for cl in trans_entry.text_lines if cl.strip())
-            combined_lines = [ass_english_line(en), ass_chinese_line(zh), ass_pinyin_line(pin)]
+            pin = " ".join(
+                line_to_pinyin(cl) for cl in trans_entry.text_lines if cl.strip()
+            )
+            combined_lines = [
+                ass_english_line(en),
+                ass_chinese_line(zh),
+                ass_pinyin_line(pin),
+            ]
             output_entries.append(
                 {
                     "sequence_number": trans_entry.sequence_number,
@@ -83,7 +98,9 @@ def run_srt_translate(
         output_entries = []
         for trans_entry in translated_entries:
             zh = join_srt_text_lines(trans_entry.text_lines)
-            pin = " ".join(line_to_pinyin(cl) for cl in trans_entry.text_lines if cl.strip())
+            pin = " ".join(
+                line_to_pinyin(cl) for cl in trans_entry.text_lines if cl.strip()
+            )
             output_entries.append(
                 {
                     "sequence_number": trans_entry.sequence_number,
@@ -116,7 +133,9 @@ def run_srt_translate(
                     "sequence_number": e.sequence_number,
                     "start_time": e.start_time,
                     "end_time": e.end_time,
-                    "text_lines": [join_srt_text_lines(e.text_lines)] if e.text_lines else [""],
+                    "text_lines": [join_srt_text_lines(e.text_lines)]
+                    if e.text_lines
+                    else [""],
                 }
                 for e in translated_entries
             ]
@@ -163,7 +182,9 @@ def run_ass_translate(
             for orig, tran in zip(texts_raw, translated_texts)
         ]
     else:
-        combined_texts = [ass_chinese_line(collapse_ass_dialogue(t)) for t in translated_texts]
+        combined_texts = [
+            ass_chinese_line(collapse_ass_dialogue(t)) for t in translated_texts
+        ]
 
     content = SubtitleParser.to_ass(parsed, combined_texts)
     fname = f"{base_name}_{target_lang}{'_dual' if dual_language else ''}.ass"

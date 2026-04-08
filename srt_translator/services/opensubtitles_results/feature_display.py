@@ -1,4 +1,5 @@
 """Display titles, years, and query filtering for OpenSubtitles rows and suggestions."""
+
 from __future__ import annotations
 
 import re
@@ -34,9 +35,7 @@ def title_is_placeholder(s: str) -> bool:
         return True
     if "placeholder" in sl or "sample title" in sl:
         return True
-    if "subscene" in sl and ("empty" in sl or "movie" in sl):
-        return True
-    return False
+    return "subscene" in sl and ("empty" in sl or "movie" in sl)
 
 
 def release_looks_like_tech_strip_tag(s: str) -> bool:
@@ -84,7 +83,9 @@ def text_matches_search(blob: str, query: str) -> bool:
     if ql in blob:
         return True
     tokens = [t for t in re.split(r"[^\w]+", ql) if t]
-    sig = [t for t in tokens if len(t) >= 4 or (len(t) >= 3 and t not in _QUERY_STOPWORDS)]
+    sig = [
+        t for t in tokens if len(t) >= 4 or (len(t) >= 3 and t not in _QUERY_STOPWORDS)
+    ]
     if not sig:
         sig = tokens
     if sig and all(t in blob for t in sig):
@@ -96,7 +97,9 @@ def text_matches_search(blob: str, query: str) -> bool:
     return False
 
 
-def year_from_aligned_movie_name(feat: dict[str, Any], display_title: str) -> Optional[int]:
+def year_from_aligned_movie_name(
+    feat: dict[str, Any], display_title: str
+) -> Optional[int]:
     """Use year embedded in movie_name only when that string plausibly describes the same work."""
     mn = str(feat.get("movie_name") or "").strip()
     if not mn:
@@ -204,7 +207,9 @@ def pick_year_for_work_suggestion(
     """
     if looks_tv:
         fn0 = all_filenames[0] if all_filenames else ""
-        return pick_display_year(feat, api_year, fn0, rel_s, display_title=display_title)
+        return pick_display_year(
+            feat, api_year, fn0, rel_s, display_title=display_title
+        )
 
     y_aligned = year_from_aligned_movie_name(feat, display_title)
     if y_aligned is not None:
@@ -304,7 +309,9 @@ def primary_title_from_feature(feat: dict[str, Any], attr: dict[str, Any]) -> st
     return ""
 
 
-def filter_subtitle_rows_by_query(rows: list[dict[str, Any]], query: str) -> list[dict[str, Any]]:
+def filter_subtitle_rows_by_query(
+    rows: list[dict[str, Any]], query: str
+) -> list[dict[str, Any]]:
     """
     Drop obvious off-topic hits when the user's query appears nowhere in title,
     release, or filename. If nothing would remain (e.g. non-Latin titles), keep all.
@@ -325,7 +332,9 @@ def filter_subtitle_rows_by_query(rows: list[dict[str, Any]], query: str) -> lis
     return matched if matched else rows
 
 
-def filter_work_suggestions_by_query(suggestions: list[dict[str, Any]], query: str) -> list[dict[str, Any]]:
+def filter_work_suggestions_by_query(
+    suggestions: list[dict[str, Any]], query: str
+) -> list[dict[str, Any]]:
     """Same idea as filter_subtitle_rows_by_query for distinct-work suggestions."""
     q = (query or "").strip()
     if len(q) < 2:
@@ -349,6 +358,8 @@ def clean_work_search_query(title: str, year: Any) -> str:
     ys = str(year).strip() if year is not None and year != "" else ""
     if ys.isdigit() and len(ys) == 4:
         t = re.sub(rf"^\s*{re.escape(ys)}\s*-\s*", "", t, flags=re.IGNORECASE).strip()
-        t = re.sub(rf"\s*\(\s*{re.escape(ys)}\s*\)\s*$", "", t, flags=re.IGNORECASE).strip()
+        t = re.sub(
+            rf"\s*\(\s*{re.escape(ys)}\s*\)\s*$", "", t, flags=re.IGNORECASE
+        ).strip()
     t = re.sub(r"\s+", " ", t).strip()
     return t or (title or "").strip()

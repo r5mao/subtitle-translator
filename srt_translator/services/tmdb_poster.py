@@ -1,4 +1,5 @@
 """TMDb API: poster, backdrop, display title, and year from tmdb_id (server-side only)."""
+
 from __future__ import annotations
 
 import json
@@ -11,7 +12,9 @@ from typing import Any, NamedTuple, Optional
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_USER_AGENT = os.environ.get("OPENSUBTITLES_USER_AGENT", "SubtitleTranslatorApp 1.0")
+_DEFAULT_USER_AGENT = os.environ.get(
+    "OPENSUBTITLES_USER_AGENT", "SubtitleTranslatorApp 1.0"
+)
 
 
 class TmdbBundle(NamedTuple):

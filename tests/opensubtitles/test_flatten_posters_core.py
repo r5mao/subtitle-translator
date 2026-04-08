@@ -101,7 +101,9 @@ def test_flatten_poster_relative_path_on_opensubtitles_com():
         ]
     }
     rows = flatten_subtitle_results(payload)
-    assert rows[0]["posterUrl"] == "https://www.opensubtitles.com/pictures/posters/abc.jpg"
+    assert (
+        rows[0]["posterUrl"] == "https://www.opensubtitles.com/pictures/posters/abc.jpg"
+    )
 
 
 def test_flatten_poster_deep_nested_string():
@@ -114,7 +116,9 @@ def test_flatten_poster_deep_nested_string():
                     "files": [{"file_id": 1, "file_name": "a.srt"}],
                     "feature_details": {
                         "movie_name": "X",
-                        "nested": {"note": "see https://s9.osdb.link/features/1/2/3/z.jpg"},
+                        "nested": {
+                            "note": "see https://s9.osdb.link/features/1/2/3/z.jpg"
+                        },
                     },
                 },
             }

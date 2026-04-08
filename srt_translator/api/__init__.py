@@ -1,4 +1,5 @@
 """API blueprint for SRT Translator."""
+
 from __future__ import annotations
 
 import logging
@@ -55,6 +56,8 @@ from srt_translator.api.translate_routes import register_translate_routes  # noq
 
 register_translate_routes(api_bp, translation_progress)
 
-from srt_translator.api.opensubtitles_routes import register_opensubtitles_routes  # noqa: E402
+from srt_translator.api.opensubtitles_routes import (  # noqa: E402
+    register_opensubtitles_routes,
+)
 
 register_opensubtitles_routes(api_bp)

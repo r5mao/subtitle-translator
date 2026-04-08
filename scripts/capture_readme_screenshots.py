@@ -3,6 +3,7 @@
 Capture README screenshots (requires: pip install playwright && playwright install chromium).
 Starts Flask on 127.0.0.1:8765 in a background thread, then saves PNGs under docs/images/.
 """
+
 from __future__ import annotations
 
 import sys
@@ -26,7 +27,10 @@ def main() -> int:
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
-        print("Install Playwright: pip install playwright && playwright install chromium", file=sys.stderr)
+        print(
+            "Install Playwright: pip install playwright && playwright install chromium",
+            file=sys.stderr,
+        )
         return 1
 
     IMAGES.mkdir(parents=True, exist_ok=True)

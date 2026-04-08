@@ -1,3 +1,5 @@
+from tests.opensubtitles.support import FakeSuggestionsDupFeature
+
 from srt_translator.services.opensubtitles_client import (
     clean_work_search_query,
     distinct_work_suggestions_from_subtitles,
@@ -5,8 +7,6 @@ from srt_translator.services.opensubtitles_client import (
     filter_work_suggestions_by_query,
     flatten_subtitle_results,
 )
-
-from tests.opensubtitles.support import FakeSuggestionsDupFeature
 
 
 def test_clean_work_search_query_strips_opensubtitles_year_patterns():
@@ -104,7 +104,9 @@ def test_flatten_skips_placeholder_api_title_uses_filename():
                 "type": "subtitle",
                 "attributes": {
                     "language": "en",
-                    "files": [{"file_id": 1, "file_name": "My.Mister.2018.S01E01.HDTV.srt"}],
+                    "files": [
+                        {"file_id": 1, "file_name": "My.Mister.2018.S01E01.HDTV.srt"}
+                    ],
                     "feature_details": {
                         "title": "Empty Movie (SubScene)",
                         "movie_name": "Empty Movie (SubScene)",

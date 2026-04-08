@@ -1,4 +1,5 @@
 """Translate and download routes (SRT/ASS/SUB)."""
+
 from __future__ import annotations
 
 import logging
@@ -10,7 +11,7 @@ import time
 import uuid
 from datetime import datetime
 
-from flask import Blueprint, jsonify, request, send_file, Response, stream_with_context
+from flask import Blueprint, Response, jsonify, request, send_file, stream_with_context
 
 from srt_translator.services.fetched_subtitle_file import (
     is_valid_fetched_id,
@@ -38,11 +39,17 @@ def register_translate_routes(api_bp: Blueprint, translation_progress: dict) -> 
         source_lang = request.form["sourceLanguage"]
         target_lang = request.form["targetLanguage"]
         if source_lang == target_lang:
-            return jsonify({"error": "Source and target languages cannot be the same"}), 400
+            return jsonify(
+                {"error": "Source and target languages cannot be the same"}
+            ), 400
         if source_lang not in translation_service.language_names:
-            return jsonify({"error": f"Unsupported source language: {source_lang}"}), 400
+            return jsonify(
+                {"error": f"Unsupported source language: {source_lang}"}
+            ), 400
         if target_lang not in translation_service.language_names:
-            return jsonify({"error": f"Unsupported target language: {target_lang}"}), 400
+            return jsonify(
+                {"error": f"Unsupported target language: {target_lang}"}
+            ), 400
         google_dest = google_translate_dest(target_lang)
         use_pinyin = is_pinyin_target(target_lang)
         dual_language = request.form.get("dualLanguage", "false").strip().lower() in (
@@ -65,7 +72,9 @@ def register_translate_routes(api_bp: Blueprint, translation_progress: dict) -> 
             resolved = resolve_fetched_subtitle_file(fetched_id)
             if not resolved:
                 return jsonify(
-                    {"error": "Fetched subtitle expired or not found. Search and select again."}
+                    {
+                        "error": "Fetched subtitle expired or not found. Search and select again."
+                    }
                 ), 404
             fetched_temp_path, original_filename = resolved
             try:
@@ -76,7 +85,9 @@ def register_translate_routes(api_bp: Blueprint, translation_progress: dict) -> 
                 return jsonify({"error": "Could not read fetched subtitle"}), 500
         else:
             if "srtFile" not in request.files:
-                return jsonify({"error": "No subtitle file or OpenSubtitles selection provided"}), 400
+                return jsonify(
+                    {"error": "No subtitle file or OpenSubtitles selection provided"}
+                ), 400
             srt_file = request.files["srtFile"]
             if srt_file.filename == "":
                 return jsonify({"error": "No file selected"}), 400
@@ -85,7 +96,9 @@ def register_translate_routes(api_bp: Blueprint, translation_progress: dict) -> 
 
         allowed_exts = (".srt", ".ass", ".ssa", ".sub")
         if not original_filename.lower().endswith(allowed_exts):
-            return jsonify({"error": "File must be a subtitle file (SRT, ASS, SSA, SUB)"}), 400
+            return jsonify(
+                {"error": "File must be a subtitle file (SRT, ASS, SSA, SUB)"}
+            ), 400
 
         try:
             encodings = ["utf-8", "utf-8-sig", "latin-1", "cp1252"]
@@ -99,7 +112,9 @@ def register_translate_routes(api_bp: Blueprint, translation_progress: dict) -> 
                     continue
             if content is None:
                 return jsonify(
-                    {"error": "Unable to decode file. Please ensure it's a valid text file."}
+                    {
+                        "error": "Unable to decode file. Please ensure it's a valid text file."
+                    }
                 ), 400
         except Exception as e:
             logger.error("Error reading file: %s", e)
@@ -117,7 +132,7 @@ def register_translate_routes(api_bp: Blueprint, translation_progress: dict) -> 
             logger.info("Parsed subtitle file as format: %s", fmt)
         except ValueError as e:
             logger.error("Subtitle parsing error: %s", e)
-            return jsonify({"error": f"Invalid subtitle format: {str(e)}"}), 400
+            return jsonify({"error": f"Invalid subtitle format: {e!s}"}), 400
 
         def update_progress(current, total):
             translation_progress[task_id]["progress"] = int((current / total) * 100)
@@ -141,7 +156,9 @@ def register_translate_routes(api_bp: Blueprint, translation_progress: dict) -> 
             translation_progress[task_id]["progress"] = 100
             logger.info("Translation completed for %s format", fmt)
 
-            total_ms = int((datetime.now() - translation_timer_start).total_seconds() * 1000)
+            total_ms = int(
+                (datetime.now() - translation_timer_start).total_seconds() * 1000
+            )
             duration_str = format_translation_duration(total_ms)
             logger.info("Translation took %s", duration_str)
 
@@ -165,15 +182,21 @@ def register_translate_routes(api_bp: Blueprint, translation_progress: dict) -> 
                     "message": "Translation completed successfully",
                     "downloadUrl": f"/api/download/{file_id}",
                     "filename": translated_filename,
-                    "sourceLanguage": translation_service.language_names.get(source_lang, source_lang),
-                    "targetLanguage": translation_service.language_names.get(target_lang, target_lang),
-                    "translationStartedAt": translation_start_time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "sourceLanguage": translation_service.language_names.get(
+                        source_lang, source_lang
+                    ),
+                    "targetLanguage": translation_service.language_names.get(
+                        target_lang, target_lang
+                    ),
+                    "translationStartedAt": translation_start_time.strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    ),
                     "translationDuration": duration_str,
                 }
             )
         except Exception as e:
             logger.error("Translation error: %s", e)
-            return jsonify({"error": f"Translation failed: {str(e)}"}), 500
+            return jsonify({"error": f"Translation failed: {e!s}"}), 500
 
     @api_bp.route("/download/<file_id>", methods=["GET"])
     def download_file(file_id):

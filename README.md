@@ -135,6 +135,16 @@ python -m pytest -q
 
 This collects only the **`tests/`** package (see `pytest.ini`). You do **not** need to start Flask for those runs; they use Flask’s in-process client. OpenSubtitles calls are mocked where needed.
 
+### Python style (Ruff)
+
+Formatting and lint rules live in **`pyproject.toml`** ([Ruff](https://docs.astral.sh/ruff/): PEP 8–aligned, Black-compatible formatter). Install the dev extra and run from the project root:
+
+```
+python -m pip install -r requirements-dev.txt
+python -m ruff format .
+python -m ruff check .
+```
+
 **End-to-end (browser) tests** live in **`e2e/`** and are **not** run by the command above. They start a real Flask server on an ephemeral port with a **fake OpenSubtitles client** (no real API calls, no rate-limit use) and a **fake translator** matching the mapping in `tests/conftest.py`. Run them explicitly (build the frontend first so `static/js/` matches `frontend/src/`):
 
 ```
@@ -180,8 +190,10 @@ project root/
 │   ├── conftest.py
 │   ├── fixtures/
 │   └── test_*.py
+├── pyproject.toml                  # Ruff lint + format (Python style)
 ├── pytest.ini
 ├── requirements.txt
+├── requirements-dev.txt            # ruff (optional dev)
 └── tests/
     ├── conftest.py
     ├── test_errors.py

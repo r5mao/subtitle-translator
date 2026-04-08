@@ -33,26 +33,47 @@ def _minimal_srt_bytes() -> bytes:
     return (_FIXTURES_DIR / "sample_en.srt").read_bytes()
 
 
-def _fake_search_api_json() -> dict:
+def _fake_search_api_json(page: int = 1) -> dict:
     """JSON shape consumed by flatten_subtitle_results / suggestions."""
+    meta = {"total_pages": 2, "total_count": 15}
+    if page <= 1:
+        return {
+            "data": [
+                {
+                    "type": "subtitle",
+                    "attributes": {
+                        "language": "en",
+                        "release": "E2E",
+                        "files": [
+                            {"file_id": "999001", "file_name": "e2e_fixture.srt"},
+                        ],
+                        "feature_details": {
+                            "title": "E2E Test Movie",
+                            "year": 2001,
+                        },
+                    },
+                }
+            ],
+            "meta": meta,
+        }
     return {
         "data": [
             {
                 "type": "subtitle",
                 "attributes": {
                     "language": "en",
-                    "release": "E2E",
+                    "release": "E2E Page 2",
                     "files": [
-                        {"file_id": "999001", "file_name": "e2e_fixture.srt"},
+                        {"file_id": "999002", "file_name": "e2e_p2.srt"},
                     ],
                     "feature_details": {
-                        "title": "E2E Test Movie",
-                        "year": 2001,
+                        "title": "E2E Test Movie P2",
+                        "year": 2002,
                     },
                 },
             }
         ],
-        "meta": {"total_pages": 1, "total_count": 1},
+        "meta": meta,
     }
 
 
@@ -97,7 +118,7 @@ class _FakeOpenSubtitlesClient:
         year=None,
         imdb_id=None,
     ) -> dict:
-        return _fake_search_api_json()
+        return _fake_search_api_json(page)
 
     def download_file(self, file_id: str) -> tuple[bytes, str]:
         return (_minimal_srt_bytes(), "e2e_fixture.srt")
@@ -108,7 +129,9 @@ def live_server_url():
     """Threaded Flask on an ephemeral port; patches active for the whole session."""
     osc._subtitle_language_names_cache = None
 
-    p_os = mock.patch.object(os_search_handlers, "OpenSubtitlesClient", _FakeOpenSubtitlesClient)
+    p_os = mock.patch.object(
+        os_search_handlers, "OpenSubtitlesClient", _FakeOpenSubtitlesClient
+    )
     p_tr = mock.patch.object(
         translation_service,
         "translate_texts",

@@ -5,7 +5,6 @@ import re
 import pytest
 from playwright.sync_api import expect
 
-
 pytestmark = pytest.mark.e2e
 
 
@@ -37,8 +36,12 @@ def test_upload_translate_download(
     page.get_by_role("button", name=re.compile(r"Translate subtitles")).click()
     page.get_by_role("button", name="Confirm").click()
 
-    expect(page.get_by_text("Translation completed successfully")).to_be_visible(timeout=120_000)
-    download_link = page.get_by_role("link", name=re.compile(r"Download translated subtitle"))
+    expect(page.get_by_text("Translation completed successfully")).to_be_visible(
+        timeout=120_000
+    )
+    download_link = page.get_by_role(
+        "link", name=re.compile(r"Download translated subtitle")
+    )
 
     with page.expect_download(timeout=120_000) as dl:
         download_link.click()

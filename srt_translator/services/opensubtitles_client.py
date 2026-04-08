@@ -1,4 +1,5 @@
 """OpenSubtitles.com REST API v1 client (server-side only)."""
+
 from __future__ import annotations
 
 import gzip
@@ -20,7 +21,9 @@ logger = logging.getLogger(__name__)
 _subtitle_language_names_cache: Optional[dict[str, str]] = None
 
 DEFAULT_API_ROOT = "https://api.opensubtitles.com"
-DEFAULT_USER_AGENT = os.environ.get("OPENSUBTITLES_USER_AGENT", "SubtitleTranslatorApp 1.0")
+DEFAULT_USER_AGENT = os.environ.get(
+    "OPENSUBTITLES_USER_AGENT", "SubtitleTranslatorApp 1.0"
+)
 
 
 def _https_base(host: str) -> str:
@@ -51,9 +54,15 @@ class OpenSubtitlesClient:
         user_agent: Optional[str] = None,
         urlopen: Optional[Callable[..., Any]] = None,
     ):
-        self.api_key = (api_key or os.environ.get("OPENSUBTITLES_API_KEY") or "").strip()
-        self.username = (username or os.environ.get("OPENSUBTITLES_USERNAME") or "").strip()
-        self.password = (password or os.environ.get("OPENSUBTITLES_PASSWORD") or "").strip()
+        self.api_key = (
+            api_key or os.environ.get("OPENSUBTITLES_API_KEY") or ""
+        ).strip()
+        self.username = (
+            username or os.environ.get("OPENSUBTITLES_USERNAME") or ""
+        ).strip()
+        self.password = (
+            password or os.environ.get("OPENSUBTITLES_PASSWORD") or ""
+        ).strip()
         self.user_agent = (user_agent or DEFAULT_USER_AGENT).strip()
         self._urlopen = urlopen or urllib.request.urlopen
         self._base_url = _https_base("api.opensubtitles.com")
@@ -96,7 +105,12 @@ class OpenSubtitlesClient:
         data = None
         if json_body is not None:
             data = json.dumps(json_body).encode("utf-8")
-        req = urllib.request.Request(url, data=data, headers=self._headers(json_body=json_body is not None), method=method)
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers=self._headers(json_body=json_body is not None),
+            method=method,
+        )
         try:
             with self._urlopen(req, timeout=60) as resp:
                 raw = resp.read()
@@ -110,9 +124,13 @@ class OpenSubtitlesClient:
             if e.code == 401 and retry_login:
                 self._token = None
                 self.login(force=True)
-                return self._request(method, path, query=query, json_body=json_body, retry_login=False)
+                return self._request(
+                    method, path, query=query, json_body=json_body, retry_login=False
+                )
             logger.warning("OpenSubtitles HTTP %s: %s", e.code, body[:500])
-            raise OpenSubtitlesError(f"OpenSubtitles request failed ({e.code}): {body[:200]}") from e
+            raise OpenSubtitlesError(
+                f"OpenSubtitles request failed ({e.code}): {body[:200]}"
+            ) from e
         except urllib.error.URLError as e:
             raise OpenSubtitlesError(f"OpenSubtitles network error: {e}") from e
 
@@ -139,7 +157,9 @@ class OpenSubtitlesClient:
                 parsed = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", errors="replace")
-            raise OpenSubtitlesError(f"OpenSubtitles login failed ({e.code}): {body[:300]}") from e
+            raise OpenSubtitlesError(
+                f"OpenSubtitles login failed ({e.code}): {body[:300]}"
+            ) from e
         except urllib.error.URLError as e:
             raise OpenSubtitlesError(f"OpenSubtitles login network error: {e}") from e
 
@@ -220,7 +240,9 @@ class OpenSubtitlesClient:
     def download_file(self, file_id: str) -> tuple[bytes, str]:
         """Resolve download link and return (raw bytes, filename)."""
         link, fname = self.request_download_link(file_id)
-        req = urllib.request.Request(link, headers={"User-Agent": self.user_agent, "Accept": "*/*"})
+        req = urllib.request.Request(
+            link, headers={"User-Agent": self.user_agent, "Accept": "*/*"}
+        )
         try:
             with self._urlopen(req, timeout=120) as resp:
                 raw = resp.read()
@@ -234,7 +256,9 @@ class OpenSubtitlesClient:
                 try:
                     raw = gzip.GzipFile(fileobj=io.BytesIO(raw)).read()
                 except OSError as e:
-                    raise OpenSubtitlesError("Could not decompress subtitle archive") from e
+                    raise OpenSubtitlesError(
+                        "Could not decompress subtitle archive"
+                    ) from e
         return raw, fname
 
 
@@ -279,6 +303,7 @@ def get_language_name_lookup(client: OpenSubtitlesClient) -> dict[str, str]:
 
 
 from srt_translator.services.opensubtitles_results import (  # noqa: E402
+    _maybe_absolutize_opensubtitles_image_url,
     clean_work_search_query,
     distinct_work_suggestions_from_subtitles,
     filter_subtitle_rows_by_query,
@@ -286,7 +311,6 @@ from srt_translator.services.opensubtitles_results import (  # noqa: E402
     flatten_subtitle_results,
     total_count_from_response,
     total_pages_from_response,
-    _maybe_absolutize_opensubtitles_image_url,
 )
 
 __all__ = [
@@ -295,6 +319,7 @@ __all__ = [
     "OpenSubtitlesClient",
     "OpenSubtitlesError",
     "OpenSubtitlesNotConfigured",
+    "_maybe_absolutize_opensubtitles_image_url",
     "clean_work_search_query",
     "distinct_work_suggestions_from_subtitles",
     "filter_subtitle_rows_by_query",
@@ -305,5 +330,4 @@ __all__ = [
     "reset_subtitle_language_names_cache",
     "total_count_from_response",
     "total_pages_from_response",
-    "_maybe_absolutize_opensubtitles_image_url",
 ]

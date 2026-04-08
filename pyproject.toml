@@ -1,0 +1,36 @@
+[tool.ruff]
+target-version = "py38"
+line-length = 88
+src = ["srt_translator", "tests", "e2e", "scripts"]
+
+[tool.ruff.format]
+# Black-compatible: consistent layout so readers scan structure, not formatting debates.
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.ruff.lint]
+# PEP 8 + common quality rules. Readability: clear imports, simpler constructs, fewer footguns.
+select = [
+  "E",   # pycodestyle errors
+  "W",   # pycodestyle warnings
+  "F",   # Pyflakes (unused imports/names, undefined names)
+  "I",   # isort — stable import blocks
+  "B",   # flake8-bugbear — likely bugs / bad patterns
+  "UP",  # pyupgrade — modern, clearer syntax for the target Python
+  "SIM", # flake8-simplify — simpler, easier-to-read expressions
+  "RUF", # Ruff-specific (e.g. ambiguous unicode)
+  "C4",  # flake8-comprehensions — clearer comprehensions
+  "PIE", # flake8-pie — small consistency wins
+]
+ignore = [
+  "E501", # Line length — leave wrapping to `ruff format` / editor; avoids fighting natural phrasing in strings/comments.
+  "RUF001", # Strings may use locale-specific punctuation (e.g. CJK); flagging “ambiguous” ASCII lookalikes hurts readability here.
+  "UP045", # `X | None` needs Python 3.10+; project supports 3.8+. Prefer `Optional[X]` until the minimum is raised.
+  "SIM102", # Combined `if` chains are not always more readable than nested checks.
+  "SIM103", # Explicit branches often read clearer than `return bool(...)` for multi-step conditions.
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["srt_translator"]
