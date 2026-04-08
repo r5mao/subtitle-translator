@@ -3,6 +3,36 @@ from srt_translator.services.opensubtitles_client import normalize_opensubtitles
 from tests.opensubtitles.support import FakeOpenSubtitlesClient, FakeOpenSubtitlesManyPages
 
 
+class FakeRefineEmptyThenBroad(FakeOpenSubtitlesClient):
+    """First refined search returns no rows; broad search (no year/imdb) returns hits."""
+
+    def __init__(self):
+        super().__init__()
+        self._search_calls = 0
+
+    def search(self, query, languages="", page=1, per_page=10, *, year=None, imdb_id=None, **kwargs):
+        self._search_calls += 1
+        type(self).last_search = {
+            "query": query,
+            "languages": languages,
+            "page": page,
+            "per_page": per_page,
+            "year": year,
+            "imdb_id": imdb_id,
+        }
+        if self._search_calls == 1 and (year is not None or imdb_id):
+            return {"data": [], "total_pages": 1, "total_count": 0}
+        return super().search(
+            query,
+            languages=languages,
+            page=page,
+            per_page=per_page,
+            year=year,
+            imdb_id=imdb_id,
+            **kwargs,
+        )
+
+
 def test_opensubtitles_status_unconfigured(client, monkeypatch):
     monkeypatch.delenv("OPENSUBTITLES_API_KEY", raising=False)
     monkeypatch.delenv("OPENSUBTITLES_USERNAME", raising=False)
@@ -108,6 +138,32 @@ def test_normalize_opensubtitles_imdb_id():
     assert normalize_opensubtitles_imdb_id("tt0133093") == "0133093"
     assert normalize_opensubtitles_imdb_id(1330933) == "1330933"
     assert normalize_opensubtitles_imdb_id("bad") is None
+
+
+def test_opensubtitles_search_refine_fallback_when_refined_empty(client, os_env_configured, monkeypatch):
+    monkeypatch.setattr(
+        "srt_translator.api.opensubtitles_search_handlers.OpenSubtitlesClient",
+        FakeRefineEmptyThenBroad,
+    )
+    monkeypatch.setattr(
+        "srt_translator.api.opensubtitles_search_handlers.get_language_name_lookup",
+        lambda _c: {"en": "English"},
+    )
+    resp = client.post(
+        "/api/opensubtitles/search",
+        json={
+            "query": "Test Movie",
+            "language": "en",
+            "page": 1,
+            "year": 2020,
+            "imdbId": "tt1234567",
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert len(data["results"]) >= 1
+    assert FakeRefineEmptyThenBroad.last_search["year"] is None
+    assert FakeRefineEmptyThenBroad.last_search["imdb_id"] is None
 
 
 def test_opensubtitles_search_passes_year_and_imdb_to_client(client, os_env_configured, monkeypatch):

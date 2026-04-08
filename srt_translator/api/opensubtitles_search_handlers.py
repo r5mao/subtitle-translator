@@ -95,6 +95,21 @@ def register_opensubtitles_search_routes(api_bp) -> None:
                 year=year_val,
                 imdb_id=imdb_q,
             )
+            _api_data = raw.get("data")
+            _refine_active = year_val is not None or bool(imdb_q)
+            if (
+                _refine_active
+                and isinstance(_api_data, list)
+                and len(_api_data) == 0
+            ):
+                raw = c.search(
+                    query,
+                    languages=os_langs,
+                    page=page,
+                    per_page=per_page,
+                    year=None,
+                    imdb_id=None,
+                )
             rows = flatten_subtitle_results(raw, language_names=lang_lookup)
             rows = filter_subtitle_rows_by_query(rows, query)
             if len(rows) > per_page:
