@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from typing import Any, Optional
 
 _QUERY_STOPWORDS = frozenset(
@@ -157,6 +158,67 @@ def pick_display_year(
     if y is not None:
         return y
     return api_year
+
+
+def _sensible_feature_year(value: Any) -> Optional[int]:
+    try:
+        yi = int(value)
+        if 1950 <= yi <= 2035:
+            return yi
+    except (TypeError, ValueError):
+        pass
+    return None
+
+
+def _mode_year_from_filenames(filenames: list[str]) -> Optional[int]:
+    """Most common year embedded in subtitle filenames; ties favor the newer year."""
+    years: list[int] = []
+    for fn in filenames:
+        y = first_year_in_text(fn)
+        if y is not None:
+            years.append(y)
+    if not years:
+        return None
+    cnt = Counter(years)
+    best = max(cnt.values())
+    candidates = [y for y, c in cnt.items() if c == best]
+    return max(candidates)
+
+
+def pick_year_for_work_suggestion(
+    feat: dict[str, Any],
+    api_year: Any,
+    all_filenames: list[str],
+    rel_s: str,
+    display_title: str,
+    *,
+    looks_tv: bool,
+) -> Any:
+    """
+    Year shown in typeahead suggestions. TV keeps per-episode filename heuristics.
+
+    For movies: prefer ``year_from_aligned_movie_name``, then consensus across all
+    subtitle files for the same feature (mode of years in filenames), then reconcile
+    with ``feature_details.year`` when it disagrees with a single misleading filename
+    year (e.g. catalog 2022 vs one file tagged 2020).
+    """
+    if looks_tv:
+        fn0 = all_filenames[0] if all_filenames else ""
+        return pick_display_year(feat, api_year, fn0, rel_s, display_title=display_title)
+
+    y_aligned = year_from_aligned_movie_name(feat, display_title)
+    if y_aligned is not None:
+        return y_aligned
+    y_mode = _mode_year_from_filenames(all_filenames)
+    y_api = _sensible_feature_year(api_year)
+    if y_api is not None and y_mode is not None and y_mode != y_api:
+        return y_api
+    if y_mode is not None:
+        return y_mode
+    if y_api is not None:
+        return y_api
+    fn0 = all_filenames[0] if all_filenames else ""
+    return pick_display_year(feat, api_year, fn0, rel_s, display_title=display_title)
 
 
 def title_hint_from_sub_filename(fname: str) -> str:

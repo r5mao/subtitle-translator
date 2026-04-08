@@ -7,12 +7,15 @@ from srt_translator.services.opensubtitles_ids import normalize_opensubtitles_im
 
 from .feature_display import (
     clean_work_search_query,
-    pick_display_year,
+    looks_like_tv_feature,
+    pick_year_for_work_suggestion,
     primary_title_from_feature,
     release_looks_like_tech_strip_tag,
     title_hint_from_sub_filename,
     title_is_placeholder,
 )
+from srt_translator.services.tmdb_poster import TmdbBundle
+
 from .media_poster import included_resource_index, resolve_poster_and_backdrop
 
 
@@ -46,11 +49,31 @@ def _feature_dedupe_key(item: dict[str, Any]) -> str:
     return f"fallback:{title}|{year}|{season}|{episode}"
 
 
-def _work_suggestion_from_subtitle_item(
-    item: dict[str, Any],
+def _collect_file_names_from_items(items: list[dict[str, Any]]) -> list[str]:
+    out: list[str] = []
+    for item in items:
+        attr = item.get("attributes") or {}
+        if not isinstance(attr, dict):
+            continue
+        files = attr.get("files")
+        if not isinstance(files, list):
+            continue
+        for f in files:
+            if isinstance(f, dict):
+                fn = f.get("file_name") or f.get("cd_number")
+                if fn:
+                    out.append(str(fn))
+    return out
+
+
+def _work_suggestion_from_subtitle_items(
+    items: list[dict[str, Any]],
     included_index: dict[tuple[str, str], dict[str, Any]],
-    tmdb_media_cache: dict[int, tuple[Optional[str], Optional[str]]],
+    tmdb_media_cache: dict[int, TmdbBundle],
 ) -> Optional[dict[str, Any]]:
+    if not items:
+        return None
+    item = items[0]
     attr = item.get("attributes") or {}
     if not isinstance(attr, dict):
         attr = {}
@@ -71,16 +94,27 @@ def _work_suggestion_from_subtitle_item(
     if not title:
         return None
     rel_s = str(attr.get("release") or "").strip()
-    fn0 = ""
-    _files = attr.get("files")
-    if isinstance(_files, list) and _files and isinstance(_files[0], dict):
-        fn0 = str(_files[0].get("file_name") or "")
+    all_filenames = _collect_file_names_from_items(items)
+    poster_url, _bd, tmdb_title, tmdb_year = resolve_poster_and_backdrop(
+        item, attr, feat, included_index, tmdb_media_cache
+    )
+    if tmdb_title:
+        title = tmdb_title
     api_year = feat.get("year")
-    year = pick_display_year(feat, api_year, fn0, rel_s, display_title=title)
+    looks_tv = looks_like_tv_feature(feat, attr)
+    year = pick_year_for_work_suggestion(
+        feat,
+        api_year,
+        all_filenames,
+        rel_s,
+        title,
+        looks_tv=looks_tv,
+    )
+    if tmdb_year is not None:
+        year = tmdb_year
     season = feat.get("season_number")
     episode = feat.get("episode_number")
     feature_type = feat.get("feature_type") or attr.get("feature_type")
-    poster_url, _bd = resolve_poster_and_backdrop(item, attr, feat, included_index, tmdb_media_cache)
 
     feature_id: Optional[str] = None
     rel = item.get("relationships")
@@ -128,23 +162,24 @@ def distinct_work_suggestions_from_subtitles(
     if not isinstance(items, list):
         return []
 
-    seen: dict[str, dict[str, Any]] = {}
+    seen: dict[str, list[dict[str, Any]]] = {}
     key_order: list[str] = []
     for item in items:
         if not isinstance(item, dict):
             continue
         key = _feature_dedupe_key(item)
         if key not in seen:
-            seen[key] = item
+            seen[key] = []
             key_order.append(key)
+        seen[key].append(item)
 
     idx = included_resource_index(api_json.get("included"))
-    tmdb_media_cache: dict[int, tuple[Optional[str], Optional[str]]] = {}
+    tmdb_media_cache: dict[int, TmdbBundle] = {}
     out: list[dict[str, Any]] = []
     for key in key_order:
         if len(out) >= cap:
             break
-        sug = _work_suggestion_from_subtitle_item(seen[key], idx, tmdb_media_cache)
+        sug = _work_suggestion_from_subtitle_items(seen[key], idx, tmdb_media_cache)
         if sug:
             out.append(sug)
     return out

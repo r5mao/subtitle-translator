@@ -10,6 +10,8 @@ from .feature_display import (
     title_hint_from_sub_filename,
     title_is_placeholder,
 )
+from srt_translator.services.tmdb_poster import TmdbBundle
+
 from .media_poster import included_resource_index, resolve_poster_and_backdrop
 
 
@@ -59,7 +61,7 @@ def flatten_subtitle_results(
         return rows
 
     included_index = included_resource_index(api_json.get("included"))
-    tmdb_media_cache: dict[int, tuple[Optional[str], Optional[str]]] = {}
+    tmdb_media_cache: dict[int, TmdbBundle] = {}
 
     for item in items:
         if not isinstance(item, dict):
@@ -103,7 +105,7 @@ def flatten_subtitle_results(
             else:
                 continue
 
-        poster_url, backdrop_url = resolve_poster_and_backdrop(
+        poster_url, backdrop_url, tmdb_title, tmdb_year = resolve_poster_and_backdrop(
             item, attr, feat, included_index, tmdb_media_cache
         )
 
@@ -138,8 +140,12 @@ def flatten_subtitle_results(
                 row_title = rel_s
             if not row_title:
                 row_title = str(file_name) if file_name else "—"
+            if tmdb_title:
+                row_title = tmdb_title
             fn_s = str(file_name)
             display_year = pick_display_year(feat, year, fn_s, rel_s, display_title=row_title)
+            if tmdb_year is not None:
+                display_year = tmdb_year
             rows.append(
                 {
                     "fileId": str(fid),

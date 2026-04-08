@@ -5,7 +5,7 @@ import json
 import re
 from typing import Any, Optional
 
-from srt_translator.services.tmdb_poster import tmdb_poster_and_backdrop_for_id
+from srt_translator.services.tmdb_poster import TmdbBundle, tmdb_bundle_for_id
 
 
 def _normalize_media_url(val: Any) -> Optional[str]:
@@ -253,8 +253,13 @@ def resolve_poster_and_backdrop(
     attr: dict[str, Any],
     feat: dict[str, Any],
     included_index: dict[tuple[str, str], dict[str, Any]],
-    tmdb_media_cache: dict[int, tuple[Optional[str], Optional[str]]],
-) -> tuple[Optional[str], Optional[str]]:
+    tmdb_media_cache: dict[int, TmdbBundle],
+) -> tuple[Optional[str], Optional[str], Optional[str], Optional[int]]:
+    """
+    Resolve poster/backdrop from OpenSubtitles JSON, then TMDb by ``tmdb_id`` when
+    ``TMDB_API_KEY`` is set. Also returns TMDb display title and release/air year
+    for labeling rows when present.
+    """
     poster_url = _poster_from_jsonapi_relationships(item, included_index)
     if not poster_url:
         poster_url = _poster_url_from_subtitle_attributes(attr, feat)
@@ -263,11 +268,15 @@ def resolve_poster_and_backdrop(
     if poster_url:
         poster_url = _maybe_absolutize_opensubtitles_image_url(poster_url) or poster_url
     backdrop_url: Optional[str] = None
+    tmdb_title: Optional[str] = None
+    tmdb_year: Optional[int] = None
     tmdb_raw = feat.get("tmdb_id") or feat.get("parent_tmdb_id")
     if tmdb_raw is not None:
-        tmdb_poster, tmdb_backdrop = tmdb_poster_and_backdrop_for_id(tmdb_raw, tmdb_media_cache)
-        if not poster_url and tmdb_poster:
-            poster_url = tmdb_poster
-        if tmdb_backdrop:
-            backdrop_url = tmdb_backdrop
-    return poster_url, backdrop_url
+        bundle = tmdb_bundle_for_id(tmdb_raw, tmdb_media_cache)
+        if not poster_url and bundle.poster:
+            poster_url = bundle.poster
+        if bundle.backdrop:
+            backdrop_url = bundle.backdrop
+        tmdb_title = bundle.display_title
+        tmdb_year = bundle.display_year
+    return poster_url, backdrop_url, tmdb_title, tmdb_year

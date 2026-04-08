@@ -178,3 +178,73 @@ def test_distinct_work_suggestions_dedupes_same_feature():
     assert sugs[1]["searchQuery"] == "Other Movie"
     assert sugs[1]["year"] == 2021
     assert sugs[1]["featureId"] == "99"
+
+
+def test_suggestion_movie_prefers_feature_year_over_misleading_filename_year():
+    """Catalog year can disagree with a rare wrong year in one subtitle filename."""
+    payload = {
+        "data": [
+            {
+                "type": "subtitle",
+                "relationships": {"feature": {"data": {"type": "feature", "id": "1"}}},
+                "attributes": {
+                    "language": "en",
+                    "release": "R1",
+                    "files": [
+                        {
+                            "file_id": 1,
+                            "file_name": "Avatar.2.2020.WrongTag.1080p.srt",
+                        }
+                    ],
+                    "feature_details": {
+                        "title": "Avatar 2",
+                        "year": 2022,
+                    },
+                },
+            }
+        ]
+    }
+    sugs = distinct_work_suggestions_from_subtitles(payload, limit=5)
+    assert len(sugs) == 1
+    assert sugs[0]["year"] == 2022
+
+
+def test_suggestion_movie_mode_prefers_majority_filename_year():
+    """When several files disagree with catalog, consensus from filenames wins unless api disagrees with mode."""
+    payload = {
+        "data": [
+            {
+                "type": "subtitle",
+                "relationships": {"feature": {"data": {"type": "feature", "id": "1"}}},
+                "attributes": {
+                    "language": "en",
+                    "release": "R1",
+                    "files": [{"file_id": 1, "file_name": "Film.2022.1080p.srt"}],
+                    "feature_details": {"title": "Some Film", "year": 2022},
+                },
+            },
+            {
+                "type": "subtitle",
+                "relationships": {"feature": {"data": {"type": "feature", "id": "1"}}},
+                "attributes": {
+                    "language": "es",
+                    "release": "R2",
+                    "files": [{"file_id": 2, "file_name": "Film.2022.720p.srt"}],
+                    "feature_details": {"title": "Some Film", "year": 2022},
+                },
+            },
+            {
+                "type": "subtitle",
+                "relationships": {"feature": {"data": {"type": "feature", "id": "1"}}},
+                "attributes": {
+                    "language": "fr",
+                    "release": "R3",
+                    "files": [{"file_id": 3, "file_name": "Film.2020.BadRip.srt"}],
+                    "feature_details": {"title": "Some Film", "year": 2022},
+                },
+            },
+        ]
+    }
+    sugs = distinct_work_suggestions_from_subtitles(payload, limit=5)
+    assert len(sugs) == 1
+    assert sugs[0]["year"] == 2022

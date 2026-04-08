@@ -67,7 +67,7 @@ Optional:
 OPENSUBTITLES_USER_AGENT=YourAppName 1.0
 ```
 
-**Movie posters in search results:** If OpenSubtitles does not return image URLs, you can set a [TMDb](https://www.themoviedb.org/settings/api) API key so the server can resolve posters from `tmdb_id` on each result:
+**TMDb metadata (posters, titles, years):** If OpenSubtitles omits poster URLs or uses working titles (e.g. “Avatar 2”), set a [TMDb](https://www.themoviedb.org/settings/api) API key. The server calls TMDb **movie** or **TV** details by `tmdb_id` on each result and uses TMDb’s **title**, **release** / **first air** year, and poster/backdrop images when present:
 
 ```
 TMDB_API_KEY=your_tmdb_v3_key

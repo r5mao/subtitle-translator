@@ -1,4 +1,5 @@
 import json
+import urllib.error
 import urllib.request
 
 from srt_translator.services.opensubtitles_client import flatten_subtitle_results
@@ -25,10 +26,19 @@ def test_flatten_poster_tmdb_falls_back_to_tv_when_movie_has_no_posters(monkeypa
             def __exit__(self, *args):
                 return False
 
-        if "/movie/" in u:
-            return R(json.dumps({"posters": []}).encode("utf-8"))
-        if "/tv/" in u:
-            return R(json.dumps({"posters": [{"file_path": "/from-tv.jpg"}]}).encode("utf-8"))
+        if "/movie/1399" in u and "api.themoviedb.org" in u:
+            raise urllib.error.HTTPError(u, 404, "Not Found", hdrs={}, fp=None)
+        if "/tv/1399" in u and "api.themoviedb.org" in u:
+            return R(
+                json.dumps(
+                    {
+                        "name": "Some Show",
+                        "first_air_date": "2011-04-17",
+                        "poster_path": "/from-tv.jpg",
+                        "backdrop_path": "/bd.jpg",
+                    }
+                ).encode("utf-8")
+            )
         raise AssertionError(f"unexpected urlopen url: {u}")
 
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
@@ -47,9 +57,11 @@ def test_flatten_poster_tmdb_falls_back_to_tv_when_movie_has_no_posters(monkeypa
     }
     rows = flatten_subtitle_results(payload)
     assert rows[0]["posterUrl"] == "https://image.tmdb.org/t/p/w185/from-tv.jpg"
+    assert rows[0]["title"] == "Some Show"
+    assert rows[0]["year"] == 2011
     assert len(calls) == 2
-    assert "/movie/1399/" in calls[0]
-    assert "/tv/1399/" in calls[1]
+    assert "/movie/1399" in calls[0]
+    assert "/tv/1399" in calls[1]
 
 
 def test_flatten_poster_tmdb_fallback(monkeypatch):
@@ -57,7 +69,14 @@ def test_flatten_poster_tmdb_fallback(monkeypatch):
 
     class FakeResp:
         def read(self):
-            return json.dumps({"posters": [{"file_path": "/abc.jpg"}]}).encode("utf-8")
+            return json.dumps(
+                {
+                    "title": "Fight Club",
+                    "release_date": "1999-10-15",
+                    "poster_path": "/abc.jpg",
+                    "backdrop_path": "/bd.jpg",
+                }
+            ).encode("utf-8")
 
         def __enter__(self):
             return self
@@ -81,10 +100,12 @@ def test_flatten_poster_tmdb_fallback(monkeypatch):
     }
     rows = flatten_subtitle_results(payload)
     assert rows[0]["posterUrl"] == "https://image.tmdb.org/t/p/w185/abc.jpg"
+    assert rows[0]["title"] == "Fight Club"
+    assert rows[0]["year"] == 1999
 
 
 def test_tmdb_poster_api_and_cdn_url_construction(monkeypatch):
-    """TMDb images request and resulting image.tmdb.org poster URL must follow a fixed shape."""
+    """TMDb movie details request and resulting image.tmdb.org URLs must follow a fixed shape."""
     monkeypatch.setenv("TMDB_API_KEY", "k")
     seen: list[str] = []
 
@@ -92,8 +113,10 @@ def test_tmdb_poster_api_and_cdn_url_construction(monkeypatch):
         def read(self):
             return json.dumps(
                 {
-                    "posters": [{"file_path": "/movie/poster1.jpg"}],
-                    "backdrops": [{"file_path": "/movie/backdrop1.jpg"}],
+                    "title": "Movie",
+                    "release_date": "2020-01-01",
+                    "poster_path": "/movie/poster1.jpg",
+                    "backdrop_path": "/movie/backdrop1.jpg",
                 }
             ).encode("utf-8")
 
@@ -123,10 +146,62 @@ def test_tmdb_poster_api_and_cdn_url_construction(monkeypatch):
     }
     rows = flatten_subtitle_results(payload)
     assert len(seen) == 1
-    assert seen[0].startswith("https://api.themoviedb.org/3/movie/999/images?")
+    assert seen[0].startswith("https://api.themoviedb.org/3/movie/999?")
     assert "api_key=k" in seen[0]
+    assert "/images" not in seen[0]
     assert rows[0]["posterUrl"] == "https://image.tmdb.org/t/p/w185/movie/poster1.jpg"
     assert rows[0]["backdropUrl"] == "https://image.tmdb.org/t/p/w780/movie/backdrop1.jpg"
+
+
+def test_flatten_tmdb_overrides_opensubtitles_title_and_year(monkeypatch):
+    """When TMDB_API_KEY is set, TMDb title and release year replace OS catalog strings."""
+    monkeypatch.setenv("TMDB_API_KEY", "k")
+
+    def fake_urlopen(req, *a, **k):
+        u = getattr(req, "full_url", None) or req.get_full_url()
+
+        class R:
+            def read(self):
+                return json.dumps(
+                    {
+                        "title": "Avatar: The Way of Water",
+                        "release_date": "2022-12-16",
+                        "poster_path": "/av.jpg",
+                        "backdrop_path": "/avbd.jpg",
+                    }
+                ).encode("utf-8")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        if "/movie/76600" in u and "api.themoviedb.org" in u:
+            return R()
+        raise AssertionError(u)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    payload = {
+        "data": [
+            {
+                "type": "subtitle",
+                "attributes": {
+                    "language": "en",
+                    "files": [{"file_id": 1, "file_name": "Avatar.2.2020.x264.srt"}],
+                    "feature_details": {
+                        "title": "Avatar 2",
+                        "year": 2020,
+                        "tmdb_id": 76600,
+                    },
+                },
+            }
+        ]
+    }
+    rows = flatten_subtitle_results(payload)
+    assert rows[0]["title"] == "Avatar: The Way of Water"
+    assert rows[0]["year"] == 2022
 
 
 def test_flatten_poster_from_included_movie_resource():
