@@ -17,11 +17,11 @@ A web application for translating subtitle files between languages using Google 
 
 ## Screenshots
 
-Captured with [Playwright](https://playwright.dev/python/) against a local Flask run (`python scripts/capture_readme_screenshots.py` after `pip install playwright` and `playwright install chromium`). The examples below use **upload** mode; if OpenSubtitles is not configured, **Search OpenSubtitles** is disabled.
 
-| Desktop (1280×900 viewport) | Narrow / mobile-style (420px wide) |
-|----------------------------|-------------------------------------|
-| ![SRT Subtitle Translator — desktop](docs/images/ui-desktop.png) | ![SRT Subtitle Translator — mobile width](docs/images/ui-mobile.png) |
+| Desktop (1280×900 viewport)       | Narrow / mobile-style (420px wide)     |
+| --------------------------------- | -------------------------------------- |
+| SRT Subtitle Translator — desktop | SRT Subtitle Translator — mobile width |
+
 
 ## Requirements
 
@@ -33,22 +33,24 @@ Captured with [Playwright](https://playwright.dev/python/) against a local Flask
 
 1. Clone this repository or copy the project files.
 2. Create and activate a virtual environment (recommended):
-   ```
+  ```
    python -m venv venv
+
    # On Windows:
    venv\Scripts\activate
+
    # On Mac/Linux:
    source venv/bin/activate
-   ```
+  ```
 3. Install dependencies:
-   ```
+  ```
    pip install -r requirements.txt
-   ```
-4. If you edit **`frontend/src/`**, install JS tooling and rebuild the browser bundle:
-   ```
+  ```
+4. If you edit `**frontend/src/**`, install JS tooling and rebuild the browser bundle:
+  ```
    npm ci
    npm run build
-   ```
+  ```
    This writes ES modules and source maps into `static/js/`. Use `npm run typecheck` for `tsc --noEmit` only.
 
 ## Configuration (optional OpenSubtitles)
@@ -85,13 +87,13 @@ The app loads `.env` from the project root inside `create_app()`, so variables a
 python app.py
 ```
 
-The app and API are available at **http://localhost:5000/** (Flask serves `index.html` at `/` and static files under `/static/`). This is the simplest way to run everything.
+The app and API are available at **[http://localhost:5000/](http://localhost:5000/)** (Flask serves `index.html` at `/` and static files under `/static/`). This is the simplest way to run everything.
 
 If translate shows **Failed to fetch**, the browser never reached Flask (wrong URL, page opened as `file://`, or **HTTPS** page calling **HTTP** API). Use the URL above or set the `subtitle-translator-api-base` meta tag to your Flask origin.
 
 ### 2. Optional: separate static server
 
-If you serve the UI with something like `python -m http.server 8080` from the project root, open **http://localhost:8080/** (or your chosen port). The bundled `main.js` will send API requests to the **same hostname on port 5000** (e.g. `http://127.0.0.1:5000`) when the page is on common dev ports (8080, 5500, 3000) on `localhost` / `127.0.0.1`, as long as Flask is still running on port 5000.
+If you serve the UI with something like `python -m http.server 8080` from the project root, open **[http://localhost:8080/](http://localhost:8080/)** (or your chosen port). The bundled `main.js` will send API requests to the **same hostname on port 5000** (e.g. `http://127.0.0.1:5000`) when the page is on common dev ports (8080, 5500, 3000) on `localhost` / `127.0.0.1`, as long as Flask is still running on port 5000.
 
 To force a different API origin, uncomment and set the meta tag in `index.html`:
 
@@ -106,22 +108,24 @@ To force a different API origin, uncomment and set the meta tag in `index.html`:
 - Press **Enter** in the title field to run the same search as the **Search subtitles** button (Enter does **not** start translation).
 - Use **rows per page** and **Previous** / **Next** to page through OpenSubtitles results.
 - After you **Select** a row, the app fetches that subtitle server-side. Click **Translate Subtitles**, confirm in the dialog, then translation runs (same pipeline as an upload).
-- Search result posters are loaded through **`GET /api/opensubtitles/poster-image`** (same origin) so CDN hotlink limits are less likely to block thumbnails.
+- Search result posters are loaded through `**GET /api/opensubtitles/poster-image`** (same origin) so CDN hotlink limits are less likely to block thumbnails.
 
 ## API Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/health` | Health check |
-| `GET` | `/api/languages` | Supported translation languages |
-| `GET` | `/api/task` | New UUID for translation progress (SSE) |
-| `GET` | `/api/opensubtitles/status` | `{ "configured": true/false }` — credentials present |
-| `GET` | `/api/opensubtitles/poster-image` | Query: `url` — HTTPS image URL (allowlisted hosts only); proxies bytes for UI thumbnails |
-| `POST` | `/api/opensubtitles/search` | JSON: `query`, optional `language` (UI code), optional `page` (1–10 only), optional `perPage` (`10`, `25`, `50`, or `100`; default `10`). Response includes `results`, `page`, `perPage`, `totalPages` (capped at 10), `totalCount`. |
-| `POST` | `/api/opensubtitles/fetch` | JSON: `file_id` — downloads subtitle to a temp file, returns `fetchedId` |
-| `POST` | `/api/translate` | Multipart: `sourceLanguage`, `targetLanguage`, `dualLanguage`, `taskId`, and **either** `srtFile` **or** `fetchedId` |
-| `GET` | `/api/translate/progress/<task_id>` | SSE progress |
-| `GET` | `/api/download/<file_id>` | Download translated file |
+
+| Method | Path                                | Description                                                                                                                                                                                                                          |
+| ------ | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET`  | `/api/health`                       | Health check                                                                                                                                                                                                                         |
+| `GET`  | `/api/languages`                    | Supported translation languages                                                                                                                                                                                                      |
+| `GET`  | `/api/task`                         | New UUID for translation progress (SSE)                                                                                                                                                                                              |
+| `GET`  | `/api/opensubtitles/status`         | `{ "configured": true/false }` — credentials present                                                                                                                                                                                 |
+| `GET`  | `/api/opensubtitles/poster-image`   | Query: `url` — HTTPS image URL (allowlisted hosts only); proxies bytes for UI thumbnails                                                                                                                                             |
+| `POST` | `/api/opensubtitles/search`         | JSON: `query`, optional `language` (UI code), optional `page` (1–10 only), optional `perPage` (`10`, `25`, `50`, or `100`; default `10`). Response includes `results`, `page`, `perPage`, `totalPages` (capped at 10), `totalCount`. |
+| `POST` | `/api/opensubtitles/fetch`          | JSON: `file_id` — downloads subtitle to a temp file, returns `fetchedId`                                                                                                                                                             |
+| `POST` | `/api/translate`                    | Multipart: `sourceLanguage`, `targetLanguage`, `dualLanguage`, `taskId`, and **either** `srtFile` **or** `fetchedId`                                                                                                                 |
+| `GET`  | `/api/translate/progress/<task_id>` | SSE progress                                                                                                                                                                                                                         |
+| `GET`  | `/api/download/<file_id>`           | Download translated file                                                                                                                                                                                                             |
+
 
 OpenSubtitles routes return **503** with a clear message if credentials are missing.
 
@@ -133,11 +137,11 @@ From the project root:
 python -m pytest -q
 ```
 
-This collects only the **`tests/`** package (see `pytest.ini`). You do **not** need to start Flask for those runs; they use Flask’s in-process client. OpenSubtitles calls are mocked where needed.
+This collects only the `**tests/**` package (see `pytest.ini`). You do **not** need to start Flask for those runs; they use Flask’s in-process client. OpenSubtitles calls are mocked where needed.
 
 ### Python style (Ruff)
 
-Formatting and lint rules live in **`pyproject.toml`** ([Ruff](https://docs.astral.sh/ruff/): PEP 8–aligned, Black-compatible formatter). Install the dev extra and run from the project root:
+Formatting and lint rules live in `**pyproject.toml`** ([Ruff](https://docs.astral.sh/ruff/): PEP 8–aligned, Black-compatible formatter). Install the dev extra and run from the project root:
 
 ```
 python -m pip install -r requirements-dev.txt
@@ -145,7 +149,7 @@ python -m ruff format .
 python -m ruff check .
 ```
 
-**End-to-end (browser) tests** live in **`e2e/`** and are **not** run by the command above. They start a real Flask server on an ephemeral port with a **fake OpenSubtitles client** (no real API calls, no rate-limit use) and a **fake translator** matching the mapping in `tests/conftest.py`. Run them explicitly (build the frontend first so `static/js/` matches `frontend/src/`):
+**End-to-end (browser) tests** live in `**e2e/`** and are **not** run by the command above. They start a real Flask server on an ephemeral port with a **fake OpenSubtitles client** (no real API calls, no rate-limit use) and a **fake translator** matching the mapping in `tests/conftest.py`. Run them explicitly (build the frontend first so `static/js/` matches `frontend/src/`):
 
 ```
 python -m pip install -r requirements.txt
