@@ -203,7 +203,7 @@ export async function runTranslation() {
         }
         UI.el.downloadBtn.download = newFileName;
         UI.el.downloadSuccessMessage.textContent = 'Translation completed successfully! 🎉';
-        UI.el.downloadBtn.textContent = '📥 Download translated subtitle';
+        UI.el.downloadBtn.textContent = 'Download translated subtitle';
         if (translationDuration) {
             UI.el.translationDuration.textContent = `Time for translation to complete: ${translationDuration}`;
         }

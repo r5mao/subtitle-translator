@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- If you serve this page from a static server (not Flask), point it at your API: -->
     <!-- <meta name="subtitle-translator-api-base" content="http://127.0.0.1:5000"> -->
-    <title>SRT Subtitle Translator</title>
+    <title>Subtitle Translator</title>
     <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="static/css/styles.css">
 </head>
@@ -74,7 +74,6 @@
                     </div>
                 </div>
                 <div id="subtitlePreviewPanel" class="subtitle-preview-panel" hidden>
-                    <p class="subtitle-preview-caption">Preview (first on-screen lines)</p>
                     <div class="subtitle-preview-frame" aria-hidden="true">
                         <img id="subtitlePreviewBg" class="subtitle-preview-bg" alt="">
                         <div class="subtitle-preview-overlay">
@@ -209,7 +208,7 @@
         <div class="download-section" id="downloadSection">
             <div class="success-message" id="downloadSuccessMessage">Translation completed successfully! 🎉</div>
             <a href="#" class="download-btn" id="downloadBtn" download>
-                📥 Download file
+                Download file
             </a>
             <div id="translationDuration" style="margin-top:20px; color:#555; font-size:1.1em;"></div>
         </div>
