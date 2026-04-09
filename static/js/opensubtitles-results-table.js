@@ -13,15 +13,6 @@ export function clearOpenSubtitlesSelection() {
     hideSubtitlePreview();
     validateLanguages();
 }
-export function releaseFetchedAfterTranslate() {
-    const { state } = UI;
-    state.fetchedId = null;
-    state.fetchedLabel = '';
-    state.selectedOsFileId = null;
-    state.fetchInProgressFileId = null;
-    validateLanguages();
-    filterAndRenderResults();
-}
 export function renderLangChips(rows) {
     const { state } = UI;
     const counts = languageCounts(rows);

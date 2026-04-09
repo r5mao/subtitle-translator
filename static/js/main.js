@@ -145,6 +145,29 @@ UI.el.translateConfirmOk.addEventListener('click', async () => {
 });
 UI.el.translateBtn.addEventListener('click', () => {
     const errorMessage = UI.el.errorMessage;
+    // #region agent log
+    fetch('http://127.0.0.1:7505/ingest/90df03b9-60a9-49fb-a632-90c7d1c30d39', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Debug-Session-Id': '090bbc',
+        },
+        body: JSON.stringify({
+            sessionId: '090bbc',
+            runId: 'translate-click',
+            hypothesisId: 'H1',
+            location: 'main.ts:translateBtn.click',
+            message: 'Translate button clicked',
+            data: {
+                fetchedId: UI.state.fetchedId,
+                selectedOsFileId: UI.state.selectedOsFileId,
+                wantsTranslate: wantsTranslate(),
+                isSearchMode: isSearchMode(),
+            },
+            timestamp: Date.now(),
+        }),
+    }).catch(() => { });
+    // #endregion
     if (isSearchMode() && !wantsTranslate()) {
         if (!UI.state.fetchedId) {
             errorMessage.textContent =

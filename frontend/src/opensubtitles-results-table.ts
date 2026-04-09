@@ -28,16 +28,6 @@ export function clearOpenSubtitlesSelection(): void {
     validateLanguages();
 }
 
-export function releaseFetchedAfterTranslate(): void {
-    const { state } = UI;
-    state.fetchedId = null;
-    state.fetchedLabel = '';
-    state.selectedOsFileId = null;
-    state.fetchInProgressFileId = null;
-    validateLanguages();
-    filterAndRenderResults();
-}
-
 export function renderLangChips(rows: OpenSubtitlesRow[]): void {
     const { state } = UI;
     const counts = languageCounts(rows);

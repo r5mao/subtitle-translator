@@ -226,8 +226,8 @@ def test_translate_with_fetched_id(client, patch_translator, monkeypatch):
         assert resp.status_code == 200
         j = resp.get_json()
         assert j["success"] is True
-        assert not os.path.exists(path), (
-            "fetched temp file should be removed after translate"
+        assert os.path.exists(path), (
+            "fetched temp file should remain after translate for re-translate / download original"
         )
     finally:
         if os.path.exists(path):

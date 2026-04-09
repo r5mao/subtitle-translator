@@ -169,12 +169,8 @@ def register_translate_routes(api_bp: Blueprint, translation_progress: dict) -> 
                 temp_file.write(translated_content)
             logger.info("Created translated file: %s", temp_file_path)
 
-            if fetched_temp_path and os.path.exists(fetched_temp_path):
-                try:
-                    os.remove(fetched_temp_path)
-                    logger.info("Removed fetched subtitle temp file after translate")
-                except OSError as e:
-                    logger.warning("Could not remove fetched temp file: %s", e)
+            # Keep fetched temp file so the user can translate again (e.g. new target language)
+            # without re-selecting. Same file is used for "Download original" until cleared.
 
             return jsonify(
                 {

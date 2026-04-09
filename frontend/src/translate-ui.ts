@@ -1,8 +1,6 @@
 import { UI } from './app-ui.js';
 import { buildTranslationTimingText } from './timing-utils.js';
 import { isSearchMode, updatePrimaryButtonLabel } from './language-and-source-ui.js';
-import { releaseFetchedAfterTranslate } from './opensubtitles-results-table.js';
-
 export function selectedOptionLabel(selectEl: HTMLSelectElement): string {
     const opt = selectEl.options[selectEl.selectedIndex];
     return opt ? opt.textContent?.trim() || '' : '';
@@ -239,7 +237,27 @@ export async function runTranslation(): Promise<void> {
         }
 
         if (isSearchMode()) {
-            releaseFetchedAfterTranslate();
+            // #region agent log
+            fetch('http://127.0.0.1:7505/ingest/90df03b9-60a9-49fb-a632-90c7d1c30d39', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Debug-Session-Id': '090bbc',
+                },
+                body: JSON.stringify({
+                    sessionId: '090bbc',
+                    runId: 'post-fix',
+                    hypothesisId: 'H1',
+                    location: 'translate-ui.ts:afterTranslateSuccess',
+                    message: 'Keeping OpenSubtitles selection for re-translate (no releaseFetchedAfterTranslate)',
+                    data: {
+                        fetchedId: state.fetchedId,
+                        selectedOsFileId: state.selectedOsFileId,
+                    },
+                    timestamp: Date.now(),
+                }),
+            }).catch(() => {});
+            // #endregion
         }
 
         downloadSection.style.display = 'block';
